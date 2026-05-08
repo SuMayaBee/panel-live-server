@@ -289,9 +289,13 @@
             : "");
       }
 
-      // Hide spinner when iframe finishes loading
+      // Hide spinner when iframe finishes loading. Either path counts as a
+      // successful load: a real URL in iframe.src, or inline HTML in srcdoc
+      // (used by the Pyodide path to bypass CSP frame-src restrictions).
       iframe.addEventListener("load", () => {
-        if (iframe.src && iframe.src !== "about:blank") {
+        const hasSrc = iframe.src && iframe.src !== "about:blank";
+        const hasSrcdoc = !!iframe.getAttribute("srcdoc");
+        if (hasSrc || hasSrcdoc) {
           hideSpinner();
         }
       });
@@ -403,9 +407,26 @@
         }
 
         // Load iframe or show error panel
-        if (currentUrl) {
+        const pyodideHtml = parsedPayload && typeof parsedPayload.pyodide_html === "string"
+          ? parsedPayload.pyodide_html
+          : "";
+
+        if (pyodideHtml) {
+          // Inline Pyodide path — bypasses CSP frame-src restrictions on
+          // localhost by handing the iframe self-contained HTML via srcdoc
+          // instead of loading from the Panel server URL.
           errorPanel.classList.remove("visible");
           iframe.style.display = "";
+          iframe.removeAttribute("src");
+          loadingOverlay.classList.remove("hidden", "blocked");
+          loadingOverlay.innerHTML =
+            '<div class="spinner"></div><span>Loading visualization (Pyodide)…</span>';
+          iframe.srcdoc = pyodideHtml;
+          startLoadTimer();
+        } else if (currentUrl) {
+          errorPanel.classList.remove("visible");
+          iframe.style.display = "";
+          iframe.removeAttribute("srcdoc");
           loadingOverlay.classList.remove("hidden", "blocked");
           loadingOverlay.innerHTML =
             '<div class="spinner"></div><span>Loading visualization…</span>';
@@ -413,6 +434,7 @@
           startLoadTimer();
         } else {
           hideSpinner();
+          iframe.removeAttribute("srcdoc");
           iframe.src = "about:blank";
           iframe.style.display = "none";
 

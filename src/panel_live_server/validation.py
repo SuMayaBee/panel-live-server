@@ -90,6 +90,69 @@ BLOCKED_IMPORTS: frozenset[str] = frozenset(
 )
 
 
+# Packages that have no Pyodide wheel and therefore cannot run in the browser
+# runtime used by the MCP App's inline preview. The snippet may still render
+# server-side at /view, but ``show`` cannot embed it inline. Suggest a
+# Pyodide-compatible alternative for each.
+PYODIDE_INCOMPATIBLE: dict[str, str] = {
+    "polars": "Use 'pandas' instead — it is Pyodide-compatible and covers most polars use cases.",
+    "duckdb": "Use 'pandas' or 'pyarrow' for in-browser data manipulation.",
+    "datashader": "Use 'bokeh' or 'matplotlib' for raster-style visualizations.",
+    "geoviews": "Use 'geopandas' + 'bokeh' or 'matplotlib' for geospatial plots.",
+    "seaborn": "Use 'matplotlib' or 'altair' — both are in Pyodide.",
+    "yfinance": "Network calls are restricted in Pyodide; load data from a CSV/URL via pandas instead.",
+    "pooch": "Pyodide cannot use filesystem caches; load data directly via pandas/requests.",
+    "panel_graphic_walker": "Panel JS extensions without WASM wheels do not run in the browser preview.",
+    "panel_material_ui": "Panel JS extensions without WASM wheels do not run in the browser preview.",
+    "panel_neuroglancer": "Panel JS extensions without WASM wheels do not run in the browser preview.",
+}
+
+
+def check_pyodide_compatibility(code: str) -> str | None:
+    """Return an error string if *code* imports any package without a Pyodide wheel.
+
+    Inline visualization rendering relies on Pyodide running the snippet
+    client-side in the host's iframe sandbox. Some packages have no WASM
+    build and would crash the browser runtime, so we reject them up front
+    and tell the LLM what to use instead.
+
+    Parameters
+    ----------
+    code : str
+        Python source to analyse.
+
+    Returns
+    -------
+    str | None
+        Error message naming the offending package(s) and suggesting an
+        alternative, or ``None`` if every import has a Pyodide wheel.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None  # Layer 1 handles syntax errors
+
+    top_level: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top_level.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top_level.add(node.module.split(".")[0])
+
+    incompatible = sorted(top_level & PYODIDE_INCOMPATIBLE.keys())
+    if not incompatible:
+        return None
+
+    suggestions = "\n".join(f"  - {pkg}: {PYODIDE_INCOMPATIBLE[pkg]}" for pkg in incompatible)
+    names = ", ".join(f"'{p}'" for p in incompatible)
+    return (
+        f"Package(s) cannot run in the browser runtime: {names}.\n"
+        f"The MCP App renders visualizations client-side via Pyodide, which "
+        f"only supports packages that have a WASM build.\n{suggestions}"
+    )
+
+
 def ast_check(code: str) -> str | None:
     r"""Return an error string if *code* has a syntax error, else ``None``.
 

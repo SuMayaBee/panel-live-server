@@ -31,6 +31,7 @@ from panel_live_server.validation import SecurityError
 from panel_live_server.validation import ValidationError
 from panel_live_server.validation import ast_check
 from panel_live_server.validation import check_packages
+from panel_live_server.validation import check_pyodide_compatibility
 from panel_live_server.validation import ruff_check
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,10 @@ def _run_validation(code: str, method: str) -> dict:
             result = {"valid": False, "layer": "extensions", "message": str(e)}
 
     if not result:
+        if err := check_pyodide_compatibility(code):
+            result = {"valid": False, "layer": "pyodide", "message": err}
+
+    if not result:
         result = {"valid": True}
 
     _validation_cache[key] = result
@@ -116,6 +121,8 @@ def _raise_validation_error(validation: dict) -> None:
         raise ValidationError(f"[packages] {message}")
     elif layer == "extensions":
         raise ValidationError(f"[extensions] {message}\nAdd the missing pn.extension(...) call to your code.")
+    elif layer == "pyodide":
+        raise ValidationError(f"[pyodide] {message}")
     else:
         raise ValidationError(message)
 
@@ -223,6 +230,16 @@ mcp = FastMCP(
     instructions=(
         "Panel Live Server executes Python code snippets and renders the resulting "
         "visualizations as live, interactive web pages.\n\n"
+        "BROWSER RUNTIME (Pyodide) — IMPORTANT:\n"
+        "The MCP App preview renders visualizations client-side in the host's "
+        "iframe via Pyodide. Only packages with a Pyodide/WASM wheel work in "
+        "the inline preview. Packages without a WASM build (polars, duckdb, "
+        "datashader, geoviews, seaborn, yfinance, pooch) are rejected by "
+        "validate(). Prefer:\n"
+        "  - pandas (instead of polars/duckdb)\n"
+        "  - bokeh / matplotlib / altair (instead of seaborn / datashader)\n"
+        "  - geopandas + shapely (instead of geoviews)\n"
+        "Call list_packages() to see the Pyodide-safe set the LLM should pick from.\n\n"
         "WORKFLOWS — choose one based on complexity:\n\n"
         "QUICK (simple plots): Call `show(code, name, quick=True)`. "
         "Runs full validation inline and renders in one step. "
@@ -285,12 +302,35 @@ def _build_frame_domains() -> list[str]:
     return domains
 
 
+# CDNs the Pyodide HTML loads from at runtime. Declared in the resource CSP so
+# the inline preview iframe (rendered via ``srcdoc``) can fetch the Pyodide
+# runtime, Panel/Bokeh JS bundles, and pure-Python wheels from PyPI.
+_PYODIDE_CDN_DOMAINS: list[str] = [
+    "https://cdn.jsdelivr.net",
+    "https://cdn.holoviz.org",
+    "https://cdn.bokeh.org",
+    "https://files.pythonhosted.org",
+    "https://pypi.org",
+]
+
+
 @mcp.resource(
     SHOW_RESOURCE_URI,
     app=AppConfig(
         csp=ResourceCSP(
             resource_domains=[
                 "'unsafe-inline'",
+                "'unsafe-eval'",
+                "'wasm-unsafe-eval'",
+                "https://unpkg.com",
+                *_PYODIDE_CDN_DOMAINS,
+            ],
+            # micropip (used by Pyodide at runtime) downloads Python wheels via
+            # fetch() — these origins must be in connect-src or the iframe
+            # sandbox will silently block the requests, causing an infinite
+            # loading spinner.
+            connect_domains=[
+                *_PYODIDE_CDN_DOMAINS,
                 "https://unpkg.com",
             ],
             frame_domains=_build_frame_domains(),
@@ -351,6 +391,42 @@ _PACKAGE_CATEGORIES: dict[str, set[str]] = {
         "param",
         "pyviz-comms",
     },
+    # Packages that have a Pyodide wheel (built-in or pure-Python via micropip)
+    # and therefore work in the inline browser preview rendered via Pyodide.
+    # Use this as the default — it filters out packages that crash in the
+    # browser runtime (polars, duckdb, datashader, geoviews, seaborn, ...).
+    "pyodide_safe": {
+        # Panel ecosystem (pure-Python, installed via micropip at runtime)
+        "panel",
+        "bokeh",
+        "holoviews",
+        "hvplot",
+        "param",
+        # Data
+        "numpy",
+        "pandas",
+        "pyarrow",
+        "xarray",
+        # Visualization
+        "matplotlib",
+        "altair",
+        "plotly",
+        "vega-datasets",
+        # ML / stats
+        "scikit-learn",
+        "scikit-image",
+        "scipy",
+        # Geospatial
+        "geopandas",
+        "shapely",
+        "pyproj",
+        # Utility
+        "requests",
+        "networkx",
+        "pillow",
+        "beautifulsoup4",
+        "lxml",
+    },
 }
 
 # "core" is the union of all named categories — used as the default.
@@ -362,7 +438,7 @@ _PACKAGE_CATEGORIES["core"] = _PACKAGE_CATEGORIES["visualization"] | _PACKAGE_CA
 
 @mcp.tool(name="list_packages")
 async def list_packages(
-    category: str = "core",
+    category: str = "pyodide_safe",
     query: str = "",
     include_versions: bool = False,
     ctx: Context | None = None,
@@ -373,13 +449,20 @@ async def list_packages(
     any visualization code, so you know exactly what libraries are available.
     The environment is fixed — packages cannot be installed or changed.
 
+    The default ``pyodide_safe`` category lists only packages that have a
+    Pyodide/WASM wheel and therefore render in the inline browser preview.
+    Use ``"core"`` to see the broader server-side set (some entries there will
+    not render inline).
+
     Parameters
     ----------
     category : str, optional
         Comma-separated list of categories to filter by.
-        Valid categories: ``"visualization"``, ``"data"``, ``"panel"``, ``"core"``.
-        Default ``"core"`` returns the union of visualization + data + panel
-        (~30 packages). Use ``""`` (empty string) to return all installed packages.
+        Valid categories: ``"pyodide_safe"`` (default), ``"visualization"``,
+        ``"data"``, ``"panel"``, ``"core"``.
+        Default ``"pyodide_safe"`` returns ~25 packages that work in the
+        browser runtime. Use ``"core"`` for the full server-side set, or
+        ``""`` (empty string) to return all installed packages.
     query : str, optional
         Case-insensitive substring filter on package name.
         Example: ``"panel"`` returns only packages with "panel" in their name.
@@ -622,6 +705,20 @@ async def show(
             # Runtime error detected at storage time — raise so the LLM gets a
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
+
+        # Generate a self-contained Pyodide HTML page so the MCP App can render
+        # the visualization via iframe.srcdoc — bypasses host CSP rules that
+        # block frame-src localhost (e.g. Claude Desktop). Best-effort: if
+        # conversion fails, fall back to the iframe.src URL flow.
+        try:
+            from panel_live_server.pyodide import convert_to_pyodide_html
+
+            pyodide_html = await asyncio.to_thread(
+                convert_to_pyodide_html, code, method, name
+            )
+            payload["pyodide_html"] = pyodide_html
+        except Exception as e:
+            logger.warning("Pyodide HTML generation failed, falling back to iframe URL: %s", e)
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
