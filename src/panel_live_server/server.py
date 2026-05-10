@@ -163,7 +163,7 @@ _cleaned_up = False
 
 
 def _cleanup():
-    """Stop the Panel server and close the client. Idempotent — safe to call multiple times."""
+    """Stop the Panel server, client, and ngrok tunnel. Idempotent."""
     global _manager, _client, _cleaned_up
     if _cleaned_up:
         return
@@ -176,6 +176,12 @@ def _cleanup():
         logger.info("Stopping Panel Live Server")
         _manager.stop()
         _manager = None
+    try:
+        from panel_live_server.tunnel import stop_ngrok
+
+        stop_ngrok()
+    except Exception:
+        pass
 
 
 def _sigterm_handler(signum, frame):
@@ -197,8 +203,24 @@ signal.signal(signal.SIGTERM, _sigterm_handler)
 
 @asynccontextmanager
 async def app_lifespan(app):
-    """MCP server lifespan - eagerly start the Panel server."""
+    """MCP server lifespan — start ngrok (optional) then Panel server."""
     global _manager, _client
+
+    config = get_config()
+
+    # Start ngrok tunnel before the Panel server so the Panel subprocess
+    # inherits the public URL via PANEL_LIVE_SERVER_EXTERNAL_URL and adds
+    # the ngrok hostname to its websocket_origin allowlist. This enables
+    # full Python-backed widget interactivity in Claude Desktop's iframe.
+    if config.ngrok_authtoken:
+        from panel_live_server.tunnel import start_ngrok
+
+        logger.info("Starting ngrok tunnel...")
+        ngrok_url = await asyncio.to_thread(start_ngrok, config.port, config.ngrok_authtoken)
+        if ngrok_url:
+            config.external_url = ngrok_url
+            os.environ["PANEL_LIVE_SERVER_EXTERNAL_URL"] = ngrok_url
+            logger.info("Ngrok URL: %s", ngrok_url)
 
     logger.info("Starting Panel Live Server...")
     _manager, _client = _start_panel_server()
@@ -206,8 +228,11 @@ async def app_lifespan(app):
     if _manager:
         atexit.register(_cleanup)
         feed_url = _externalize_url(f"http://{_manager.host}:{_manager.port}/feed")
-        # Print to stderr so it's visible even in stdio MCP mode
-        print(f"\n  Panel Live Server is running.\n  Feed: {feed_url}\n", file=sys.stderr, flush=True)  # noqa: T201
+        lines = ["\n  Panel Live Server is running.", f"  Feed: {feed_url}"]
+        if config.external_url:
+            lines.append(f"  Public: {config.external_url}")
+        lines.append("")
+        print("\n".join(lines), file=sys.stderr, flush=True)  # noqa: T201
         logger.info(f"Panel Live Server started — feed: {feed_url}")
     else:
         logger.warning("Panel Live Server failed to start - show tool will not work")
@@ -293,7 +318,10 @@ def _build_frame_domains() -> list[str]:
                 "'unsafe-inline'",
                 "https://unpkg.com",
             ],
-            frame_domains=_build_frame_domains(),
+            # "https:" allows any HTTPS origin so that ngrok/tunnel URLs work
+            # without requiring the exact subdomain to be known at startup.
+            # Localhost origins are listed explicitly for non-tunnel clients.
+            frame_domains=[*_build_frame_domains(), "https:"],
         )
     ),
 )

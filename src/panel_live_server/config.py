@@ -60,6 +60,17 @@ class Config(BaseModel):
             "or CODESPACE_NAME (GitHub Codespaces) if not set explicitly via PANEL_LIVE_SERVER_EXTERNAL_URL."
         ),
     )
+    ngrok_authtoken: str = Field(
+        default="",
+        description=(
+            "Ngrok auth token (PANEL_LIVE_SERVER_NGROK_TOKEN). "
+            "When set, the MCP server starts an ngrok HTTPS tunnel to the Panel server "
+            "at startup. The public URL is used as the external URL so Claude Desktop "
+            "can embed the live Panel session in an iframe, enabling full Python-backed "
+            "widget interactivity. Get a free token at "
+            "https://dashboard.ngrok.com/get-started/your-authtoken"
+        ),
+    )
 
 
 _config: Config | None = None
@@ -76,6 +87,7 @@ def get_config() -> Config:
             max_restarts=int(os.getenv("PANEL_LIVE_SERVER_MAX_RESTARTS", "3")),
             db_path=Path(os.getenv("PANEL_LIVE_SERVER_DB_PATH", str(_default_user_dir() / "snippets" / "snippets.db"))),
             external_url=_resolve_external_url(port),
+        ngrok_authtoken=os.getenv("PANEL_LIVE_SERVER_NGROK_TOKEN", ""),
         )
     return _config
 

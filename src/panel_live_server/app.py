@@ -63,6 +63,20 @@ def main(address: str = "localhost", port: int = 5077, show: bool = True) -> Non
     """Start the Panel server."""
     import panel as pn
 
+    # When running behind an ngrok tunnel, every HTTP response must include
+    # `ngrok-skip-browser-warning` so ngrok's edge passes the Panel HTML
+    # directly to the browser instead of showing its interstitial page.
+    if "ngrok" in get_config().external_url.lower():
+        from tornado.web import RequestHandler as _Handler
+
+        _orig_defaults = _Handler.set_default_headers
+
+        def _add_ngrok_header(self):
+            _orig_defaults(self)
+            self.set_header("ngrok-skip-browser-warning", "true")
+
+        _Handler.set_default_headers = _add_ngrok_header
+
     from panel_live_server.database import get_db
     from panel_live_server.pages import add_page
     from panel_live_server.pages import admin_page
