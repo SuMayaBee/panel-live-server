@@ -38,6 +38,18 @@ logger = logging.getLogger(__name__)
 SHOW_RESOURCE_URI = "ui://panel-live-server/show.html"
 SHOW_TEMPLATE_PATH = Path(__file__).parent / "templates" / "show.html"
 
+# CDN origins referenced by the static HTML produced via ``panel_obj.save()``.
+# When the MCP App renders that HTML inline through ``iframe.srcdoc``, the
+# parent document's CSP applies to it — so these must be allowed in
+# ``resource_domains`` (script-src / style-src). ``cdn.jsdelivr.net`` is
+# included for libraries that bundle dependencies (Vega, ECharts, etc.) from
+# jsDelivr rather than HoloViz infrastructure.
+_CDN_DOMAINS: list[str] = [
+    "https://cdn.bokeh.org",
+    "https://cdn.holoviz.org",
+    "https://cdn.jsdelivr.net",
+]
+
 # Global instances
 _manager: PanelServerManager | None = None
 _client: DisplayClient | None = None
@@ -292,6 +304,7 @@ def _build_frame_domains() -> list[str]:
             resource_domains=[
                 "'unsafe-inline'",
                 "https://unpkg.com",
+                *_CDN_DOMAINS,
             ],
             frame_domains=_build_frame_domains(),
         )
@@ -622,6 +635,21 @@ async def show(
             # Runtime error detected at storage time — raise so the LLM gets a
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
+
+        # Generate a self-contained static HTML snapshot for inline rendering.
+        # Hosts that block ``frame-src localhost`` via CSP (e.g. Claude Desktop)
+        # cannot load the Panel server URL into an iframe — handing the iframe
+        # ``srcdoc`` instead bypasses ``frame-src`` entirely. If the snapshot
+        # fails for any reason we still return the URL so the visualization is
+        # reachable in a browser.
+        try:
+            from panel_live_server.static_html import convert_to_static_html
+
+            payload["static_html"] = await asyncio.to_thread(
+                convert_to_static_html, code, method, name
+            )
+        except Exception as e:
+            logger.warning("Static HTML generation failed, falling back to URL: %s", e)
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
