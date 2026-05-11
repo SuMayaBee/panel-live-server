@@ -101,6 +101,107 @@ class SnippetEndpoint(RequestHandler):
             )
 
 
+class EmbedEndpoint(RequestHandler):
+    """Render a snippet to static, self-contained HTML.
+
+    Returns a complete HTML document with CDN-loaded Bokeh/Panel resources,
+    suitable for embedding inline in Claude Desktop via ``iframe.srcdoc``.
+    This sidesteps Claude Desktop's ``frame-src localhost`` CSP restriction
+    by carrying the HTML in the MCP tool result payload instead of requiring
+    the iframe to load from ``localhost``.
+
+    Python-side interactivity (``@pn.depends``, ``pn.bind`` with Python
+    callbacks) is lost in the snapshot. JS-side interactivity — Bokeh
+    ``CustomJS``, ``jslink``, hover/zoom/pan, HoloViews ``HoloMap``,
+    Plotly built-in widgets, Vega-Lite selections — is preserved.
+    """
+
+    def get(self):
+        """Render the snippet identified by ``?id=`` as static HTML."""
+        import io
+        import sys
+
+        import panel as pn
+
+        from panel_live_server.utils import execute_in_module
+        from panel_live_server.utils import extract_last_expression
+        from panel_live_server.utils import find_extensions
+
+        snippet_id = self.get_argument("id", "")
+        if not snippet_id:
+            self.set_status(400)
+            self.set_header("Content-Type", "application/json")
+            self.write({"error": "Missing 'id' parameter"})
+            return
+
+        db = get_db()
+        snippet = db.get_snippet(snippet_id)
+        if not snippet:
+            self.set_status(404)
+            self.set_header("Content-Type", "application/json")
+            self.write({"error": f"Snippet {snippet_id} not found"})
+            return
+
+        try:
+            extensions = list(set(find_extensions(snippet.app)))
+            if extensions:
+                pn.extension(*extensions)
+
+            preamble = "import panel as pn\n\npn.config.design = None\n\n"
+            app = preamble + snippet.app
+            module_name = f"bokeh_app_embed_{snippet.id.replace('-', '_')}"
+            result = None
+
+            if snippet.method == "jupyter":
+                statements, last_expr = extract_last_expression(app)
+                namespace = execute_in_module(statements, module_name=module_name, cleanup=False)
+                try:
+                    result = eval(last_expr, namespace) if last_expr else None  # noqa: S307
+                finally:
+                    sys.modules.pop(module_name, None)
+            else:
+                captured: list = []
+                original_servable = pn.viewable.Viewable.servable
+
+                def _capturing_servable(self_inner, *args, **kwargs):
+                    captured.append(self_inner)
+                    return self_inner
+
+                pn.viewable.Viewable.servable = _capturing_servable  # type: ignore[assignment]
+                try:
+                    execute_in_module(app, module_name=module_name, cleanup=True)
+                finally:
+                    pn.viewable.Viewable.servable = original_servable  # type: ignore[assignment]
+
+                if captured:
+                    result = pn.Column(*captured) if len(captured) > 1 else captured[0]
+
+            if result is None:
+                self.set_status(200)
+                self.set_header("Content-Type", "text/html; charset=utf-8")
+                self.write(
+                    "<!doctype html><html><body style='font-family:system-ui;padding:2em;opacity:.7'>"
+                    "<p>Code executed successfully (no output to display).</p>"
+                    "</body></html>"
+                )
+                return
+
+            obj = pn.panel(result, sizing_mode="stretch_width")
+            buf = io.StringIO()
+            obj.save(buf, resources="cdn", embed=True)
+            html = buf.getvalue()
+
+            self.set_status(200)
+            self.set_header("Content-Type", "text/html; charset=utf-8")
+            self.write(html)
+
+        except Exception as e:
+            logger.exception(f"Error rendering embed for snippet {snippet_id}")
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write({"error": str(e), "traceback": traceback.format_exc()})
+
+
 class HealthEndpoint(RequestHandler):
     """Tornado RequestHandler for /api/health endpoint."""
 

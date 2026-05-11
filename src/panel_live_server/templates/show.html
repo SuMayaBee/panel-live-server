@@ -268,7 +268,16 @@
 
       let currentUrl = "";
       let currentCode = "";
+      let currentEmbedHtml = "";
+      let currentEmbedHtmlGz = "";
       let loadTimer = null;
+      let renderToken = 0;
+
+      async function decompressGzipBase64(b64) {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+        return await new Response(stream).text();
+      }
 
       function hideSpinner() {
         clearTimeout(loadTimer);
@@ -289,9 +298,9 @@
             : "");
       }
 
-      // Hide spinner when iframe finishes loading
+      // Hide spinner when iframe finishes loading (either src or srcdoc).
       iframe.addEventListener("load", () => {
-        if (iframe.src && iframe.src !== "about:blank") {
+        if (iframe.srcdoc || (iframe.src && iframe.src !== "about:blank")) {
           hideSpinner();
         }
       });
@@ -370,6 +379,8 @@
           messageEl.classList.add(`status-${status}`);
           currentUrl = typeof parsedPayload.url === "string" ? parsedPayload.url : "";
           currentCode = typeof parsedPayload.code === "string" ? parsedPayload.code : "";
+          currentEmbedHtml = typeof parsedPayload.embed_html === "string" ? parsedPayload.embed_html : "";
+          currentEmbedHtmlGz = typeof parsedPayload.embed_html_gz === "string" ? parsedPayload.embed_html_gz : "";
 
           // Update tab title with visualization name if available
           if (parsedPayload.name) {
@@ -400,19 +411,60 @@
           const match = rawText.match(urlRegex);
           currentUrl = match ? match[1] : "";
           currentCode = "";
+          currentEmbedHtml = "";
+          currentEmbedHtmlGz = "";
         }
 
-        // Load iframe or show error panel
-        if (currentUrl) {
+        // Render: prefer inline static HTML (bypasses frame-src localhost CSP),
+        // fall back to iframe.src (URL) for environments where it's allowed.
+        // embed_html_gz: gzip+base64 to fit under Claude Desktop's tool-result cap.
+        if (currentEmbedHtmlGz) {
+          errorPanel.classList.remove("visible");
+          iframe.style.display = "";
+          loadingOverlay.classList.remove("hidden", "blocked");
+          loadingOverlay.innerHTML =
+            '<div class="spinner"></div><span>Decompressing visualization…</span>';
+          const token = ++renderToken;
+          decompressGzipBase64(currentEmbedHtmlGz)
+            .then((html) => {
+              if (token !== renderToken) return; // a newer result superseded this one
+              loadingOverlay.innerHTML =
+                '<div class="spinner"></div><span>Rendering visualization…</span>';
+              iframe.removeAttribute("src");
+              iframe.srcdoc = html;
+              startLoadTimer();
+            })
+            .catch((err) => {
+              if (token !== renderToken) return;
+              hideSpinner();
+              iframe.removeAttribute("srcdoc");
+              iframe.src = "about:blank";
+              iframe.style.display = "none";
+              errorPanel.querySelector(".error-header").textContent = "✗ Decompression Error";
+              errorBody.textContent = `Failed to decompress inline visualization: ${err?.message || err}`;
+              errorPanel.classList.add("visible");
+            });
+        } else if (currentEmbedHtml) {
+          errorPanel.classList.remove("visible");
+          iframe.style.display = "";
+          loadingOverlay.classList.remove("hidden", "blocked");
+          loadingOverlay.innerHTML =
+            '<div class="spinner"></div><span>Rendering visualization…</span>';
+          iframe.removeAttribute("src");
+          iframe.srcdoc = currentEmbedHtml;
+          startLoadTimer();
+        } else if (currentUrl) {
           errorPanel.classList.remove("visible");
           iframe.style.display = "";
           loadingOverlay.classList.remove("hidden", "blocked");
           loadingOverlay.innerHTML =
             '<div class="spinner"></div><span>Loading visualization…</span>';
+          iframe.removeAttribute("srcdoc");
           iframe.src = currentUrl;
           startLoadTimer();
         } else {
           hideSpinner();
+          iframe.removeAttribute("srcdoc");
           iframe.src = "about:blank";
           iframe.style.display = "none";
 

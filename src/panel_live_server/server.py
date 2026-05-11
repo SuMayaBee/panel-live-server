@@ -6,6 +6,8 @@ for executing Python code and rendering visualizations via a Panel web server.
 
 import asyncio
 import atexit
+import base64
+import gzip
 import json
 import logging
 import os
@@ -247,6 +249,35 @@ mcp = FastMCP(
         "- Bokeh: low-level interactive web plots\n"
         "- deck.gl (pn.pane.DeckGL): large-scale geospatial and 3D data visualization\n"
         "Always verify the library is installed via `list_packages` first.\n\n"
+        "INTERACTIVITY — IMPORTANT\n"
+        "Visualizations render as **static HTML snapshots** inline in the chat. "
+        "JavaScript-side interactivity is preserved; Python callbacks are not.\n"
+        "PREFER (works inline):\n"
+        "- Bokeh widgets with `js_on_change` + `CustomJS` callbacks\n"
+        "- Panel widgets linked with `.jslink(target, value='...')`\n"
+        "- HoloViews `HoloMap` for discrete-parameter sliders (pre-renders all states)\n"
+        "- Plotly built-in widgets (`animation_frame`, sliders, dropdowns) — pure JS\n"
+        "- Altair/Vega-Lite `selection_interval`, `selection_point`\n"
+        "- Bokeh tools: hover, pan, zoom, box/lasso select, tap\n"
+        "AVOID (snapshot-only — won't respond in the inline view):\n"
+        "- `@pn.depends(slider.param.value)` decorated functions\n"
+        "- `pn.bind(python_fn, widget)` with Python callbacks\n"
+        "- `param.watch` triggering Python code\n"
+        "- `pn.widgets.FloatSlider` / `pn.widgets.IntSlider` wired to Python callbacks\n\n"
+        "SLIDERS — use Bokeh Slider + CustomJS, never pn.widgets + @pn.depends:\n"
+        "  WRONG (only ~3 discrete states inline):\n"
+        "    freq = pn.widgets.FloatSlider(start=0.5, end=5.0)\n"
+        "    @pn.depends(freq, watch=True)\n"
+        "    def update(f): source.data = dict(x=x, y=np.sin(f*x))\n"
+        "  RIGHT (smooth continuous updates inline):\n"
+        "    from bokeh.models import Slider, CustomJS\n"
+        "    freq = Slider(start=0.5, end=5.0, value=1.0, title='Frequency')\n"
+        "    freq.js_on_change('value', CustomJS(args=dict(source=source, freq=freq), code='''\n"
+        "        source.data = {x: source.data.x, y: source.data.x.map(xi => Math.sin(freq.value * xi))};\n"
+        "    '''))\n"
+        "Always use Bokeh Slider + CustomJS when the user asks for any slider, knob, or continuous control.\n"
+        "If full Python interactivity is required, tell the user to open the "
+        "visualization URL in their browser via the link below the chart.\n\n"
         "OUTPUT\n"
         "After calling `show`, ALWAYS present the returned URL to the user as a "
         "clickable Markdown link: [Show Visualization](url)\n\n"
@@ -285,13 +316,24 @@ def _build_frame_domains() -> list[str]:
     return domains
 
 
+# CDN providers used by Panel.save(resources='cdn'). These must be allowed by
+# CSP script-src/style-src so the embedded HTML can bootstrap Bokeh/Panel/etc.
+_CDN_DOMAINS = [
+    "https://cdn.bokeh.org",
+    "https://cdn.holoviz.org",
+    "https://cdn.jsdelivr.net",
+    "https://cdn.plot.ly",
+    "https://unpkg.com",
+]
+
+
 @mcp.resource(
     SHOW_RESOURCE_URI,
     app=AppConfig(
         csp=ResourceCSP(
             resource_domains=[
                 "'unsafe-inline'",
-                "https://unpkg.com",
+                *_CDN_DOMAINS,
             ],
             frame_domains=_build_frame_domains(),
         )
@@ -518,6 +560,12 @@ async def show(
     IMPORTANT — after calling this tool, always present the returned `url` to the user
     as a clickable Markdown link: [Show Visualization](url)
 
+    IMPORTANT — inline preview is a static HTML snapshot. JS-side interactions
+    (CustomJS, jslink, HoloMap, Plotly built-in widgets, Vega selections,
+    Bokeh hover/zoom/pan) all work. Python callbacks (`@pn.depends`,
+    `pn.bind` with Python fn, `param.watch`) do NOT work in the inline view —
+    point users to the URL link if they need those.
+
     Parameters
     ----------
     code : str
@@ -607,6 +655,7 @@ async def show(
             method=method,
         )
         url = _externalize_url(response.get("url", ""))
+        snippet_id = response.get("id", "")
 
         payload: dict[str, str | int] = {
             "tool": "show",
@@ -622,6 +671,17 @@ async def show(
             # Runtime error detected at storage time — raise so the LLM gets a
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
+
+        # Fetch the self-contained static HTML for inline embedding. This is
+        # what bypasses Claude Desktop's frame-src localhost block — the HTML
+        # arrives in the tool payload and is rendered via iframe.srcdoc.
+        # gzip+base64 to stay under Claude Desktop's tool-result size cap;
+        # the template decompresses with DecompressionStream before rendering.
+        if snippet_id:
+            embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
+            if embed_html:
+                compressed = gzip.compress(embed_html.encode("utf-8"))
+                payload["embed_html_gz"] = base64.b64encode(compressed).decode("ascii")
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."

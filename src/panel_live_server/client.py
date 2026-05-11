@@ -95,6 +95,34 @@ class DisplayClient:
             logger.exception(f"Error creating visualization: {e}")
             raise RuntimeError(f"Failed to create visualization: {e}") from e
 
+    def get_embed_html(self, snippet_id: str) -> str | None:
+        """Fetch the self-contained static HTML for a snippet.
+
+        Used to embed the visualization inline in Claude Desktop via
+        ``iframe.srcdoc``. Returns ``None`` (with a warning log) on failure
+        so the caller can degrade gracefully to the URL-only flow.
+        """
+        try:
+            response = self.session.get(
+                f"{self.base_url}/api/embed",
+                params={"id": snippet_id},
+                timeout=self.timeout,
+            )
+            if response.status_code != 200:
+                logger.warning(
+                    "Embed render failed (HTTP %s) for snippet %s",
+                    response.status_code, snippet_id,
+                )
+                return None
+            content_type = response.headers.get("Content-Type", "")
+            if "text/html" not in content_type:
+                logger.warning("Embed render returned non-HTML content-type: %s", content_type)
+                return None
+            return response.text
+        except requests.RequestException as e:
+            logger.warning("Embed render request error for snippet %s: %s", snippet_id, e)
+            return None
+
     def close(self) -> None:
         """Close the HTTP session and cleanup resources."""
         if self.session:
