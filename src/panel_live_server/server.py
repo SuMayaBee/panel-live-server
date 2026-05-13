@@ -557,6 +557,15 @@ async def show(
     """
     global _manager, _client
 
+    # Log MCP client identity so we can confirm exact name/version strings
+    # per client (Claude Desktop, VS Code, Cursor, etc.) during development.
+    if ctx:
+        try:
+            info = ctx.request_context.session.client_params.clientInfo
+            logger.info("MCP client: name=%r version=%r", info.name, info.version)
+        except Exception as e:
+            logger.info("MCP client: could not read clientInfo (%s)", e)
+
     # Clamp zoom to nearest valid level
     _valid_zooms = [25, 50, 75, 100]
     zoom = min(_valid_zooms, key=lambda z: abs(z - zoom))
