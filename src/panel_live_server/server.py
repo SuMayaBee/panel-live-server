@@ -6,6 +6,8 @@ for executing Python code and rendering visualizations via a Panel web server.
 
 import asyncio
 import atexit
+import base64
+import gzip
 import json
 import logging
 import os
@@ -138,6 +140,17 @@ def _externalize_url(url: str) -> str:
     path = parsed.path or ""
     query = f"?{parsed.query}" if parsed.query else ""
     return f"{external_url.rstrip('/')}{path}{query}"
+
+
+def _get_mcp_client_name(ctx: Context | None) -> str:
+    """Return the MCP client name from the initialize handshake (lowercased).
+
+    Claude Desktop sends ``'claude-ai'``. Returns empty string if unavailable.
+    """
+    try:
+        return ctx.request_context.session.client_params.clientInfo.name.lower()  # type: ignore[union-attr]
+    except Exception:
+        return ""
 
 
 def _start_panel_server() -> tuple[PanelServerManager | None, DisplayClient | None]:
@@ -285,13 +298,24 @@ def _build_frame_domains() -> list[str]:
     return domains
 
 
+# CDN providers used by panel.save(resources='cdn'). Required in CSP
+# script-src/style-src so the srcdoc embed can bootstrap Bokeh/Panel/etc.
+_CDN_DOMAINS = [
+    "https://cdn.bokeh.org",
+    "https://cdn.holoviz.org",
+    "https://cdn.jsdelivr.net",
+    "https://cdn.plot.ly",
+    "https://unpkg.com",
+]
+
+
 @mcp.resource(
     SHOW_RESOURCE_URI,
     app=AppConfig(
         csp=ResourceCSP(
             resource_domains=[
                 "'unsafe-inline'",
-                "https://unpkg.com",
+                *_CDN_DOMAINS,
             ],
             frame_domains=_build_frame_domains(),
         )
@@ -557,6 +581,9 @@ async def show(
     """
     global _manager, _client
 
+    client_name = _get_mcp_client_name(ctx)
+    is_claude = client_name == "claude-ai"
+
     # Clamp zoom to nearest valid level
     _valid_zooms = [25, 50, 75, 100]
     zoom = min(_valid_zooms, key=lambda z: abs(z - zoom))
@@ -622,6 +649,47 @@ async def show(
             # Runtime error detected at storage time — raise so the LLM gets a
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
+
+        snippet_id = response.get("id", "")
+
+        if method == "jupyter":
+            # Client-side visualization: save to self-contained HTML and embed
+            # via iframe.srcdoc — bypasses Claude Desktop's frame-src CSP.
+            # Gzip + base64 keeps the payload under Claude Desktop's size cap.
+            if snippet_id:
+                embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
+                if embed_html:
+                    compressed = gzip.compress(embed_html.encode("utf-8"))
+                    payload["embed_html_gz"] = base64.b64encode(compressed).decode("ascii")
+        elif method == "panel" and is_claude:
+            # Detect avoidable panel usage: @pn.depends or .servable() without
+            # any real dashboard signals — these can be rewritten with jslink
+            # to render inline. Real dashboards pass through to the placeholder.
+            _real_dashboard_signals = [
+                "Template",   # FastListTemplate, MaterialTemplate, etc.
+                "pn.bind",    # reactive binding
+                "pn.state",   # server-side state
+                "pn.template",
+                "pn.serve",
+            ]
+            is_real_dashboard = any(s in code for s in _real_dashboard_signals)
+            is_avoidable = ("@pn.depends" in code or ".servable()" in code) and not is_real_dashboard
+
+            if is_avoidable:
+                raise ToolError(
+                    "This code uses @pn.depends or .servable() which requires a live Python "
+                    "server and cannot render inline in Claude Desktop.\n"
+                    "Rewrite using widget.jslink(plot, value='property') instead — "
+                    "it runs in JavaScript, no server needed, and renders inline.\n"
+                    "Examples:\n"
+                    "  slider.jslink(plot, value='glyph.fill_alpha')\n"
+                    "  slider.jslink(plot, value='glyph.size')\n"
+                    "  slider.jslink(plot, code={'value': 'x_range.start = cb_obj.value[0]'})\n"
+                    "Use method='jupyter' and end with pn.Column(widget, plot) as the last expression."
+                )
+
+            # Real Panel dashboard: needs live server, show placeholder with URL.
+            payload["panel_server"] = True
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."

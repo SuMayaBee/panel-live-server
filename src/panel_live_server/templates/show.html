@@ -205,6 +205,44 @@
       .error-panel.visible {
         display: block;
       }
+
+      /* Panel-server placeholder — shown for method="panel" in Claude Desktop */
+      .panel-placeholder {
+        display: none;
+        position: absolute;
+        inset: 0;
+        border: 1px solid rgba(120, 120, 120, 0.3);
+        border-radius: 8px;
+        background: rgba(128, 128, 128, 0.04);
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 24px;
+        text-align: center;
+        box-sizing: border-box;
+      }
+
+      .panel-placeholder.visible { display: flex; }
+
+      .panel-placeholder p {
+        margin: 0;
+        font-size: 0.85rem;
+        opacity: 0.75;
+        max-width: 30rem;
+        line-height: 1.5;
+      }
+
+      .panel-placeholder a {
+        border: 1px solid rgba(120, 120, 120, 0.4);
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-size: 0.85rem;
+        text-decoration: none;
+        color: inherit;
+      }
+
+      .panel-placeholder a:hover { background: rgba(120, 120, 120, 0.12); }
     </style>
   </head>
   <body>
@@ -229,6 +267,10 @@
           <div class="error-header">✗ Validation Error</div>
           <div id="error-body" class="error-body"></div>
         </div>
+        <div id="panel-placeholder" class="panel-placeholder">
+          <p>This Panel dashboard requires a live Python server and cannot be previewed inline.</p>
+          <a id="panel-open-btn" href="#" target="_blank" rel="noopener">Open in Browser ↗</a>
+        </div>
         <iframe id="view" src="about:blank" title="show preview"></iframe>
       </div>
     </div>
@@ -241,6 +283,8 @@
       const loadingOverlay = document.getElementById("loading-overlay");
       const errorPanel = document.getElementById("error-panel");
       const errorBody = document.getElementById("error-body");
+      const panelPlaceholder = document.getElementById("panel-placeholder");
+      const panelOpenBtn = document.getElementById("panel-open-btn");
       const copyCodeButton = document.getElementById("copy-code");
       const shareUrlButton  = document.getElementById("share-url");
       const zoomButtons = [
@@ -268,7 +312,15 @@
 
       let currentUrl = "";
       let currentCode = "";
+      let currentEmbedHtmlGz = "";
       let loadTimer = null;
+      let renderToken = 0;
+
+      async function decompressGzipBase64(b64) {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+        return await new Response(stream).text();
+      }
 
       function hideSpinner() {
         clearTimeout(loadTimer);
@@ -289,9 +341,9 @@
             : "");
       }
 
-      // Hide spinner when iframe finishes loading
+      // Hide spinner when iframe finishes loading (src or srcdoc).
       iframe.addEventListener("load", () => {
-        if (iframe.src && iframe.src !== "about:blank") {
+        if (iframe.srcdoc || (iframe.src && iframe.src !== "about:blank")) {
           hideSpinner();
         }
       });
@@ -370,6 +422,7 @@
           messageEl.classList.add(`status-${status}`);
           currentUrl = typeof parsedPayload.url === "string" ? parsedPayload.url : "";
           currentCode = typeof parsedPayload.code === "string" ? parsedPayload.code : "";
+          currentEmbedHtmlGz = typeof parsedPayload.embed_html_gz === "string" ? parsedPayload.embed_html_gz : "";
 
           // Update tab title with visualization name if available
           if (parsedPayload.name) {
@@ -400,15 +453,59 @@
           const match = rawText.match(urlRegex);
           currentUrl = match ? match[1] : "";
           currentCode = "";
+          currentEmbedHtmlGz = "";
         }
 
-        // Load iframe or show error panel
-        if (currentUrl) {
-          errorPanel.classList.remove("visible");
+        // --- Rendering: three paths ---
+        // 1. embed_html_gz → jupyter method in Claude Desktop (srcdoc, CSP-safe)
+        // 2. panel_server  → panel method in Claude Desktop (placeholder + URL)
+        // 3. URL only      → panel method in other clients (iframe.src works fine)
+
+        const isPanelServer = parsedPayload && parsedPayload.panel_server === true;
+
+        // Reset all panels
+        errorPanel.classList.remove("visible");
+        panelPlaceholder.classList.remove("visible");
+
+        if (currentEmbedHtmlGz) {
+          iframe.style.display = "";
+          loadingOverlay.classList.remove("hidden", "blocked");
+          loadingOverlay.innerHTML =
+            '<div class="spinner"></div><span>Decompressing visualization…</span>';
+          const token = ++renderToken;
+          decompressGzipBase64(currentEmbedHtmlGz)
+            .then((html) => {
+              if (token !== renderToken) return;
+              loadingOverlay.innerHTML =
+                '<div class="spinner"></div><span>Rendering visualization…</span>';
+              iframe.removeAttribute("src");
+              iframe.srcdoc = html;
+              startLoadTimer();
+            })
+            .catch((err) => {
+              if (token !== renderToken) return;
+              hideSpinner();
+              iframe.removeAttribute("srcdoc");
+              iframe.src = "about:blank";
+              iframe.style.display = "none";
+              errorPanel.querySelector(".error-header").textContent = "✗ Decompression Error";
+              errorBody.textContent = `Failed to decompress inline visualization: ${err?.message || err}`;
+              errorPanel.classList.add("visible");
+            });
+        } else if (isPanelServer) {
+          hideSpinner();
+          iframe.removeAttribute("srcdoc");
+          iframe.src = "about:blank";
+          iframe.style.display = "none";
+          panelOpenBtn.href = currentUrl || "#";
+          panelOpenBtn.style.display = currentUrl ? "" : "none";
+          panelPlaceholder.classList.add("visible");
+        } else if (currentUrl) {
           iframe.style.display = "";
           loadingOverlay.classList.remove("hidden", "blocked");
           loadingOverlay.innerHTML =
             '<div class="spinner"></div><span>Loading visualization…</span>';
+          iframe.removeAttribute("srcdoc");
           iframe.src = currentUrl;
           startLoadTimer();
         } else {
