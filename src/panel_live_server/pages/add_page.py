@@ -79,8 +79,8 @@ def add_page():
 
     method_select = pmui.RadioButtonGroup(
         label="Execution Method",
-        options=["jupyter", "panel"],
-        value="jupyter",
+        options=["inline", "server"],
+        value="inline",
         sizing_mode="stretch_width",
     )
 

@@ -126,7 +126,7 @@ async def test_show_returns_payload_quick():
     code = "import panel as pn\npn.pane.Markdown('Hello').servable()"
     client = Client(mcp)
     async with client:
-        result = await client.call_tool("show", {"code": code, "method": "panel", "quick": True})
+        result = await client.call_tool("show", {"code": code, "method": "server", "quick": True})
         text = result.content[0].text
         payload = json.loads(text)
         assert payload["tool"] == "show"
@@ -142,8 +142,8 @@ async def test_show_returns_payload_after_validate():
     code = "import panel as pn\npn.pane.Markdown('Hello').servable()"
     client = Client(mcp)
     async with client:
-        await client.call_tool("validate", {"code": code, "method": "panel"})
-        result = await client.call_tool("show", {"code": code, "method": "panel"})
+        await client.call_tool("validate", {"code": code, "method": "server"})
+        result = await client.call_tool("show", {"code": code, "method": "server"})
         text = result.content[0].text
         payload = json.loads(text)
         assert payload["tool"] == "show"
@@ -239,7 +239,7 @@ async def test_validate_returns_error_for_missing_extension_panel_method():
             "validate",
             {
                 "code": "x = 1  # plotly visualization",
-                "method": "panel",
+                "method": "server",
             },
         )
         data = json.loads(result.content[0].text)
@@ -257,7 +257,7 @@ async def test_validate_skips_extension_check_for_jupyter_method():
             "validate",
             {
                 "code": "x = 1  # plotly visualization",
-                "method": "jupyter",
+                "method": "inline",
             },
         )
         data = json.loads(result.content[0].text)
@@ -272,7 +272,7 @@ async def test_validate_result_is_cached():
     async with client:
         code = "y = 42"
         await client.call_tool("validate", {"code": code})
-        assert (code, "jupyter") in server_module._validation_cache
+        assert (code, "inline") in server_module._validation_cache
         # Second call hits cache (no exception, same result).
         result = await client.call_tool("validate", {"code": code})
         data = json.loads(result.content[0].text)
@@ -378,7 +378,7 @@ async def test_show_caches_validation_and_reuses_on_show():
             # First call: validate populates the cache + _fully_validated.
             await client.call_tool("validate", {"code": code})
             # Second call: show hits the cache — ast_check not called again.
-            await client.call_tool("show", {"code": code, "method": "jupyter"})
+            await client.call_tool("show", {"code": code, "method": "inline"})
 
     assert call_count["n"] == 1, "ast_check should be called exactly once (cached on second call)"
 
@@ -395,7 +395,7 @@ async def test_show_quick_works_without_prior_validate():
     server_module._fully_validated.clear()
     client = Client(mcp)
     async with client:
-        result = await client.call_tool("show", {"code": "x = 1", "method": "jupyter", "quick": True})
+        result = await client.call_tool("show", {"code": "x = 1", "method": "inline", "quick": True})
         payload = json.loads(result.content[0].text)
         assert payload["status"] == "success"
 
@@ -424,7 +424,7 @@ async def test_show_default_raises_without_prior_validate():
     client = Client(mcp)
     async with client:
         with pytest.raises(ToolError, match="not been validated"):
-            await client.call_tool("show", {"code": "x = 1", "method": "jupyter"})
+            await client.call_tool("show", {"code": "x = 1", "method": "inline"})
 
 
 @pytest.mark.asyncio
@@ -434,8 +434,8 @@ async def test_show_default_succeeds_after_validate():
     server_module._fully_validated.clear()
     client = Client(mcp)
     async with client:
-        await client.call_tool("validate", {"code": "x = 1", "method": "jupyter"})
-        result = await client.call_tool("show", {"code": "x = 1", "method": "jupyter"})
+        await client.call_tool("validate", {"code": "x = 1", "method": "inline"})
+        result = await client.call_tool("show", {"code": "x = 1", "method": "inline"})
         payload = json.loads(result.content[0].text)
         assert payload["status"] == "success"
 
@@ -450,5 +450,5 @@ async def test_show_quick_raises_validation_error_for_missing_extension_panel_me
         with pytest.raises(ToolError, match=r"\[extensions\]"):
             await client.call_tool(
                 "show",
-                {"code": "x = 1  # plotly visualization", "method": "panel", "quick": True},
+                {"code": "x = 1  # plotly visualization", "method": "server", "quick": True},
             )

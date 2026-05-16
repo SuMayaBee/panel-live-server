@@ -19,7 +19,7 @@ class _FakeDB:
         self.method_seen: str | None = None
         self.raise_value_error: bool = False
 
-    def create_visualization(self, app: str, name: str = "", description: str = "", method: str = "jupyter") -> SimpleNamespace:
+    def create_visualization(self, app: str, name: str = "", description: str = "", method: str = "inline") -> SimpleNamespace:
         self.method_seen = method
         if self.raise_value_error:
             raise ValueError("Unsupported execution method 'invalid'. Supported methods: jupyter, panel, pyodide")
@@ -94,7 +94,7 @@ class TestSnippetEndpoint(AsyncHTTPTestCase):
         """POST /api/snippet should return Codespaces-forwarded URL when config.external_url is set."""
         body = {
             "code": "print('hello')",
-            "method": "jupyter",
+            "method": "inline",
         }
 
         fake_config = SimpleNamespace(external_url="https://literate-chainsaw-54wjwvrrxv4c4p5q-5077.app.github.dev")
@@ -115,7 +115,7 @@ class TestSnippetEndpoint(AsyncHTTPTestCase):
         """POST /api/snippet should use external_url from config when set to a Jupyter proxy URL."""
         body = {
             "code": "print('hello')",
-            "method": "jupyter",
+            "method": "inline",
         }
 
         fake_config = SimpleNamespace(external_url="https://proxy.example.dev/user/foo/proxy/5077")
@@ -136,7 +136,7 @@ class TestSnippetEndpoint(AsyncHTTPTestCase):
         """config.external_url should be used for URL construction when set."""
         body = {
             "code": "print('hello')",
-            "method": "jupyter",
+            "method": "inline",
         }
 
         fake_config = SimpleNamespace(external_url="https://config-proxy.example.dev/user/proxy/5077")

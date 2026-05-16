@@ -47,7 +47,7 @@ class SnippetEndpoint(RequestHandler):
             code = request_body.get("code", "")
             name = request_body.get("name", "")
             description = request_body.get("description", "")
-            method = request_body.get("method", "jupyter")
+            method = request_body.get("method", "inline")
 
             # Call shared business logic
             snippet = db.create_visualization(

@@ -38,7 +38,7 @@ def create_view(snippet_id: str) -> pn.viewable.Viewable | None:
     snippet = db.get_snippet(snippet_id)
 
     # Load extensions at the Panel session level so their JavaScript assets are
-    # registered before the page is served.  For jupyter-method snippets the
+    # registered before the page is served.  For inline-method snippets the
     # required extensions were inferred at storage time; always include codeeditor
     # for the error/code display pane.
     session_extensions = list({"codeeditor"} | set(find_extensions(snippet.app) if snippet else []))
@@ -128,7 +128,7 @@ def _execute_code(snippet: Snippet) -> pn.viewable.Viewable | None:
 
     preamble = "import panel as pn\n\npn.config.design = None\n\n"
 
-    if snippet.method == "jupyter":
+    if snippet.method == "inline":
         # Extensions are loaded at the Panel session level in create_view(); no
         # need to inject pn.extension() into the executed code here.
         app = preamble + snippet.app
