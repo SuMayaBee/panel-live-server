@@ -30,7 +30,7 @@ class TestSnippetDatabase:
             app="print('hello')",
             name="Test",
             description="Test description",
-            method="jupyter",
+            method="inline",
         )
 
         created = temp_db.create_snippet(snippet)
@@ -45,7 +45,7 @@ class TestSnippetDatabase:
         snippet = Snippet(
             app="x = 1",
             name="Simple",
-            method="jupyter",
+            method="inline",
         )
 
         temp_db.create_snippet(snippet)
@@ -64,7 +64,7 @@ class TestSnippetDatabase:
         """Test updating a snippet."""
         snippet = Snippet(
             app="y = 2",
-            method="jupyter",
+            method="inline",
         )
 
         temp_db.create_snippet(snippet)
@@ -90,7 +90,7 @@ class TestSnippetDatabase:
             snippet = Snippet(
                 app=f"x = {i}",
                 name=f"Test {i}",
-                method="jupyter",
+                method="inline",
             )
             temp_db.create_snippet(snippet)
 
@@ -106,7 +106,7 @@ class TestSnippetDatabase:
         """Test deleting a snippet."""
         snippet = Snippet(
             app="z = 3",
-            method="jupyter",
+            method="inline",
         )
 
         temp_db.create_snippet(snippet)
@@ -123,9 +123,9 @@ class TestSnippetDatabase:
         """Test full-text search."""
         # Create snippets with different content
         snippets = [
-            Snippet(app="import pandas", name="Pandas Test", method="jupyter"),
-            Snippet(app="import numpy", name="NumPy Test", method="jupyter"),
-            Snippet(app="import matplotlib", name="Plotting", method="jupyter"),
+            Snippet(app="import pandas", name="Pandas Test", method="inline"),
+            Snippet(app="import numpy", name="NumPy Test", method="inline"),
+            Snippet(app="import matplotlib", name="Plotting", method="inline"),
         ]
 
         for snippet in snippets:
@@ -168,9 +168,9 @@ class TestSnippetDatabase:
         # This would raise ExtensionError if validate_extension_availability ran for jupyter.
         snippet = temp_db.create_visualization(
             app="x = 1  # plotly visualization",
-            method="jupyter",
+            method="inline",
         )
-        assert snippet.method == "jupyter"
+        assert snippet.method == "inline"
         assert "plotly" in snippet.extensions
 
     def test_panel_method_still_enforces_extension_validation(self, temp_db):
@@ -180,5 +180,5 @@ class TestSnippetDatabase:
         with pytest.raises(ExtensionError, match="plotly"):
             temp_db.create_visualization(
                 app="x = 1  # plotly visualization",
-                method="panel",
+                method="server",
             )

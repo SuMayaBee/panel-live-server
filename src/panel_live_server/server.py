@@ -58,14 +58,14 @@ def _run_validation(code: str, method: str) -> dict:
     1. Syntax — ``ast.parse``
     2. Security — ruff rules + blocked-import list
     3. Package availability — all imports must be installed
-    4. Panel extensions — declared via ``pn.extension()`` (``panel`` method only)
+    4. Panel extensions — declared via ``pn.extension()`` (``server`` method only)
 
     Parameters
     ----------
     code : str
         Python code to validate.
     method : str
-        Execution method (``"jupyter"`` or ``"panel"``).
+        Execution method (``"inline"`` or ``"server"``).
 
     Returns
     -------
@@ -91,7 +91,7 @@ def _run_validation(code: str, method: str) -> dict:
         if err := check_packages(code):
             result = {"valid": False, "layer": "packages", "message": err}
 
-    if not result and method == "panel":
+    if not result and method == "server":
         try:
             validate_extension_availability(code)
         except ExtensionError as e:
@@ -435,7 +435,7 @@ async def list_packages(
 @mcp.tool(name="validate")
 async def validate(
     code: str,
-    method: Literal["jupyter", "panel"] = "jupyter",
+    method: Literal["inline", "server"] = "inline",
     ctx: Context | None = None,
 ) -> dict:
     """Validate Python visualization code — ALWAYS call before show().
@@ -448,8 +448,8 @@ async def validate(
     1. Syntax — ``ast.parse``
     2. Security — ruff security rules + blocked-import list
     3. Package availability — all imports must be installed in this environment
-    4. Panel extensions — declared via ``pn.extension()`` (``panel`` method only;
-       ``jupyter`` method auto-injects extensions so no declaration is needed)
+    4. Panel extensions — declared via ``pn.extension()`` (``server`` method only;
+       ``inline`` method auto-injects extensions so no declaration is needed)
     5. Runtime execution — runs the code in an isolated namespace to catch
        ``ValueError``, ``TypeError``, ``AttributeError``, import failures, etc.
 
@@ -457,7 +457,7 @@ async def validate(
     ----------
     code : str
         Python code to validate.
-    method : {"jupyter", "panel"}, default "jupyter"
+    method : {"inline", "server"}, default "inline"
         Execution method — same as the ``method`` parameter of ``show``.
 
     Returns
@@ -490,7 +490,7 @@ async def show(
     code: str,
     name: str = "",
     description: str = "",
-    method: Literal["jupyter", "panel"] = "jupyter",
+    method: Literal["inline", "server"] = "inline",
     zoom: int = 100,
     quick: bool = False,
     ctx: Context | None = None,
@@ -522,19 +522,19 @@ async def show(
     ----------
     code : str
         Python code to execute.
-        For "jupyter" method: the LAST expression is displayed. It must be at column 0
+        For "inline" method: the LAST expression is displayed. It must be at column 0
         (fully dedented — no leading whitespace or indentation).
-        For "panel" method: call .servable() on the objects you want displayed.
+        For "server" method: call .servable() on the objects you want displayed.
     name : str, optional
         Short descriptive name shown in the visualization feed (e.g. "Sales chart 2024").
         Always provide this — unnamed visualizations are hard to track.
     description : str, optional
         One-sentence description of what the visualization shows.
-    method : {"jupyter", "panel"}, default "jupyter"
+    method : {"inline", "server"}, default "inline"
         Execution mode:
-        - "jupyter": displays the last expression's result. Use for standard plots,
+        - "inline": displays the last expression's result. Use for standard plots,
           dataframes, and objects that do NOT import panel directly.
-        - "panel": displays objects marked `.servable()`. Use when the code imports
+        - "server": displays objects marked `.servable()`. Use when the code imports
           and uses Panel to build dashboards, apps, or complex layouts.
     zoom : {100, 75, 50, 25}, default 100
         Initial zoom level for the visualization preview.

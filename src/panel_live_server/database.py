@@ -46,7 +46,7 @@ class Snippet(BaseModel):
     name: str = Field(default="", description="User-provided name")
     description: str = Field(default="", description="Short description of the app")
     readme: str = Field(default="", description="Longer documentation describing the app")
-    method: Literal["jupyter", "panel", "pyodide"] = Field(..., description="Execution method")
+    method: Literal["inline", "server", "pyodide"] = Field(..., description="Execution method")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: Literal["pending", "success", "error"] = Field(default="pending")
@@ -443,7 +443,7 @@ class SnippetDatabase:
         name: str = "",
         description: str = "",
         readme: str = "",
-        method: Literal["jupyter", "panel", "pyodide"] = "jupyter",
+        method: Literal["inline", "server", "pyodide"] = "inline",
     ) -> Snippet:
         """Create a visualization request.
 
@@ -461,7 +461,7 @@ class SnippetDatabase:
         readme : str, optional
             Longer documentation describing the app
         method : str, optional
-            Execution method: "jupyter", "panel", or "pyodide"
+            Execution method: "inline", "server", or "pyodide"
 
         Returns
         -------
@@ -481,7 +481,7 @@ class SnippetDatabase:
         if not app:
             raise ValueError("App code is required")
 
-        supported_methods = {"jupyter", "panel", "pyodide"}
+        supported_methods = {"inline", "server", "pyodide"}
         if method not in supported_methods:
             supported_text = ", ".join(sorted(supported_methods))
             raise ValueError(f"Unsupported execution method '{method}'. Supported methods: {supported_text}")
@@ -498,8 +498,8 @@ class SnippetDatabase:
             raise ValueError(err)
 
         # Layer 4 — Panel extension availability (raises ExtensionError)
-        # jupyter method auto-injects extensions at render time; only enforce for panel.
-        if method == "panel":
+        # inline method auto-injects extensions at render time; only enforce for server.
+        if method == "server":
             validate_extension_availability(app)
 
         # Format before storage and runtime execution
@@ -510,7 +510,7 @@ class SnippetDatabase:
 
         # Infer requirements and extensions
         requirements = find_requirements(app)
-        extensions = find_extensions(app) if method == "jupyter" else []
+        extensions = find_extensions(app) if method == "inline" else []
 
         # Create snippet in database with "pending" status
         snippet_obj = Snippet(

@@ -11,7 +11,7 @@ from panel_live_server.database import Snippet
 from panel_live_server.database import SnippetDatabase
 
 
-def _make_snippet(app: str, method: str = "jupyter") -> Snippet:
+def _make_snippet(app: str, method: str = "inline") -> Snippet:
     return Snippet(app=app, method=method, name="test")
 
 
@@ -48,7 +48,7 @@ class TestExecuteCodeNoPreambleInjection:
 
         snippet = _make_snippet(
             "import panel as pn\npn.extension('plotly')\nx = 1",
-            method="panel",
+            method="server",
         )
         captured = {}
 

@@ -48,7 +48,7 @@ class DisplayClient:
         except requests.RequestException:
             return False
 
-    def create_snippet(self, code: str, name: str = "", description: str = "", method: str = "jupyter") -> dict:
+    def create_snippet(self, code: str, name: str = "", description: str = "", method: str = "inline") -> dict:
         """Create a visualization snippet on the Display Server.
 
         Sends Python code to the server for execution and rendering.
@@ -62,7 +62,7 @@ class DisplayClient:
         description : str, optional
             Description of the visualization
         method : str, optional
-            Execution method ("jupyter" or "panel")
+            Execution method ("inline" or "server")
 
         Returns
         -------

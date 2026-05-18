@@ -80,7 +80,7 @@ df
             code=code,
             name="Test DataFrame",
             description="A simple test",
-            method="jupyter",
+            method="inline",
         )
 
         # Should succeed
@@ -100,7 +100,7 @@ df
         response = client.create_snippet(
             code=code,
             name="Syntax Error Test",
-            method="jupyter",
+            method="inline",
         )
 
         # Should return error
@@ -115,7 +115,7 @@ df
         response = client.create_snippet(
             code=code,
             name="Runtime Error Test",
-            method="jupyter",
+            method="inline",
         )
 
         # Should return error
@@ -133,7 +133,7 @@ arr.mean()
         response = client.create_snippet(
             code=code,
             name="NumPy Test",
-            method="jupyter",
+            method="inline",
         )
 
         # Should succeed
@@ -155,7 +155,7 @@ arr.mean()
             response = client.create_snippet(
                 code=code,
                 name=f"Test {i}",
-                method="jupyter",
+                method="inline",
             )
             responses.append(response)
 
