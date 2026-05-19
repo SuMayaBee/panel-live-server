@@ -104,7 +104,7 @@ class SnippetEndpoint(RequestHandler):
 class EmbedEndpoint(RequestHandler):
     """Render a snippet to self-contained HTML via GET /api/embed?id=...
 
-    Used for ``method="jupyter"`` visualizations (hvplot, holoviews, bokeh,
+    Used for ``method="inline"`` visualizations (hvplot, holoviews, bokeh,
     matplotlib, plotly). Returns a complete HTML document with CDN-loaded
     Bokeh/Panel resources suitable for embedding via ``iframe.srcdoc``.
     JS-side interactivity (CustomJS, jslink, hover/zoom) is preserved;

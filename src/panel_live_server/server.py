@@ -652,7 +652,7 @@ async def show(
 
         snippet_id = response.get("id", "")
 
-        if method == "jupyter":
+        if method == "inline":
             # Client-side visualization: save to self-contained HTML and embed
             # via iframe.srcdoc — bypasses Claude Desktop's frame-src CSP.
             # Gzip + base64 keeps the payload under Claude Desktop's size cap.
@@ -661,7 +661,7 @@ async def show(
                 if embed_html:
                     compressed = gzip.compress(embed_html.encode("utf-8"))
                     payload["embed_html_gz"] = base64.b64encode(compressed).decode("ascii")
-        elif method == "panel" and is_claude:
+        elif method == "server" and is_claude:
             # Detect avoidable panel usage: @pn.depends or .servable() without
             # any real dashboard signals — these can be rewritten with jslink
             # to render inline. Real dashboards pass through to the placeholder.
