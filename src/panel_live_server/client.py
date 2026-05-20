@@ -96,7 +96,7 @@ class DisplayClient:
             raise RuntimeError(f"Failed to create visualization: {e}") from e
 
     def get_embed_html(self, snippet_id: str) -> str | None:
-        """Fetch self-contained static HTML for a jupyter-method snippet.
+        """Fetch self-contained static HTML for an inline-method snippet.
 
         Returns ``None`` on failure so the caller can degrade gracefully.
         """
