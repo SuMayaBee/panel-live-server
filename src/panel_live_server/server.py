@@ -642,12 +642,10 @@ async def show(
         snippet_id = response.get("id", "")
 
         if is_claude:
-            # Embed as srcdoc (Claude Desktop CSP); for method="server" with callbacks, show placeholder instead.
+            # Embed as srcdoc to bypass Claude Desktop's frame-src CSP.
+            # If embed is empty (e.g. pn.bind / DynamicMap need a live server), fall back to placeholder.
             _EMBED_SIZE_CAP = 300_000
-            _real_server_patterns = ["pn.bind(", "hv.DynamicMap(", ".param.watch(", "@pn.depends", "Template", "pn.serve("]
-            if method == "server" and any(p in code for p in _real_server_patterns):
-                payload["panel_server"] = True
-            elif snippet_id:
+            if snippet_id:
                 embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
                 if embed_html:
                     compressed = gzip.compress(embed_html.encode("utf-8"))
