@@ -652,29 +652,12 @@ async def show(
 
         snippet_id = response.get("id", "")
 
-        if method == "inline":
-            # Client-side visualization: save to self-contained HTML and embed
-            # via iframe.srcdoc — bypasses Claude Desktop's frame-src CSP.
-            # Gzip + base64 keeps the payload under Claude Desktop's size cap.
-            _EMBED_SIZE_CAP = 300_000  # ~300 KB base64-encoded
-            if snippet_id:
-                embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
-                if embed_html:
-                    compressed = gzip.compress(embed_html.encode("utf-8"))
-                    encoded = base64.b64encode(compressed).decode("ascii")
-                    if len(encoded) <= _EMBED_SIZE_CAP:
-                        payload["embed_html_gz"] = encoded
-                    else:
-                        payload["panel_server"] = True
-        elif method == "server" and is_claude:
-            # If the code has no Python-callback patterns it's a static plot that
-            # happens to call .servable() — embed it inline just like method="inline".
-            # If it has callbacks (pn.bind, DynamicMap, param.watch, Templates, etc.)
-            # it genuinely needs a live server — show the placeholder.
+        if is_claude:
+            # Embed as srcdoc to bypass Claude Desktop's frame-src CSP; other clients use iframe.src directly.
+            # For method="server", real Python-callback patterns need a live server — show placeholder instead.
             _EMBED_SIZE_CAP = 300_000
             _real_server_patterns = ["pn.bind(", "hv.DynamicMap(", ".param.watch(", "@pn.depends", "Template", "pn.serve("]
-            _is_real_server = any(p in code for p in _real_server_patterns)
-            if _is_real_server:
+            if method == "server" and any(p in code for p in _real_server_patterns):
                 payload["panel_server"] = True
             elif snippet_id:
                 embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
@@ -685,7 +668,7 @@ async def show(
                         payload["embed_html_gz"] = encoded
                     else:
                         payload["panel_server"] = True
-                else:
+                elif method == "server":
                     payload["panel_server"] = True
 
         payload["status"] = "success"
