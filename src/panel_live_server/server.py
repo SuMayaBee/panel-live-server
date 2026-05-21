@@ -231,6 +231,24 @@ async def app_lifespan(app):
         _cleanup()
 
 
+_CLAUDE_DESKTOP_INSTRUCTIONS = (
+    "IF YOU ARE CLAUDE DESKTOP\n"
+    "Visualizations are embedded inline in the chat via srcdoc — no live server connection. "
+    "Follow these rules strictly:\n"
+    "- For ANY interactive visualization (sliders, dropdowns, buttons): use Bokeh widgets "
+    "  (Slider, Select, CheckboxGroup) with jslink or CustomJS. "
+    "  Do NOT use pn.bind, @pn.depends, param.watch, or .servable() — "
+    "  these require a live Python server and will NOT work inline.\n"
+    "- Use method='inline' for all plots, static or interactive.\n"
+    "- Use method='server' ONLY for complex Panel dashboards that truly need a running Python server "
+    "  (e.g. FastListTemplate, real-time streaming, database queries). "
+    "  The user will need to open these via the 'Show Visualization' link.\n\n"
+    "IF YOU ARE ANY OTHER CLIENT (Cursor, VS Code, etc.)\n"
+    "Visualizations load via iframe.src — the live server is always reachable. "
+    "Use Panel reactive patterns (pn.bind, @pn.depends) freely. "
+    "Use method='server' for any interactive Panel app.\n\n"
+)
+
 mcp = FastMCP(
     "Panel Live Server",
     instructions=(
@@ -260,7 +278,8 @@ mcp = FastMCP(
         "- Bokeh: low-level interactive web plots\n"
         "- deck.gl (pn.pane.DeckGL): large-scale geospatial and 3D data visualization\n"
         "Always verify the library is installed via `list_packages` first.\n\n"
-        "OUTPUT\n"
+        + _CLAUDE_DESKTOP_INSTRUCTIONS
+        + "OUTPUT\n"
         "After calling `show`, ALWAYS present the returned URL to the user as a "
         "clickable Markdown link: [Show Visualization](url)\n\n"
         "ERRORS\n"
@@ -305,6 +324,10 @@ def _build_frame_domains() -> list[str]:
             resource_domains=[
                 "'unsafe-inline'",
                 "https://unpkg.com",
+                "https://cdn.bokeh.org",
+                "https://cdn.holoviz.org",
+                "https://cdn.jsdelivr.net",
+                "https://cdn.plot.ly",
             ],
             frame_domains=_build_frame_domains(),
         )
@@ -644,7 +667,7 @@ async def show(
         if is_claude:
             # Embed as srcdoc to bypass Claude Desktop's frame-src CSP.
             # If embed is empty (e.g. pn.bind / DynamicMap need a live server), fall back to placeholder.
-            _EMBED_SIZE_CAP = 300_000
+            _EMBED_SIZE_CAP = 150_000
             if snippet_id:
                 embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
                 if embed_html:
@@ -654,7 +677,9 @@ async def show(
                         payload["embed_html_gz"] = encoded
                     else:
                         payload["panel_server"] = True
-                elif method == "server":
+                else:
+                    # Empty string (Python callbacks detected) or None (embed failed):
+                    # in either case the live-server URL will be CSP-blocked in Claude Desktop.
                     payload["panel_server"] = True
 
         payload["status"] = "success"

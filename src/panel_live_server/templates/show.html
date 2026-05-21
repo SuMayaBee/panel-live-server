@@ -265,7 +265,7 @@
         </div>
         <div id="panel-placeholder" class="panel-placeholder">
           <p class="placeholder-title">Live server required</p>
-          <p class="placeholder-sub">This visualization uses Panel widgets that need a running Python server. Copy the URL from the toolbar to open it in your browser.</p>
+          <p class="placeholder-sub">Click the <strong>Show Visualization</strong> link in the chat to open it in your browser.</p>
         </div>
         <iframe id="view" src="about:blank" title="show preview"></iframe>
       </div>
@@ -336,9 +336,9 @@
             : "");
       }
 
-      // Hide spinner when iframe finishes loading
+      // Hide spinner when iframe finishes loading (srcdoc path keeps src="about:blank")
       iframe.addEventListener("load", () => {
-        if (iframe.src && iframe.src !== "about:blank") {
+        if ((iframe.src && iframe.src !== "about:blank") || iframe.srcdoc) {
           hideSpinner();
         }
       });
