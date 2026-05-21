@@ -298,24 +298,13 @@ def _build_frame_domains() -> list[str]:
     return domains
 
 
-# CDN providers used by panel.save(resources='cdn'). Required in CSP
-# script-src/style-src so the srcdoc embed can bootstrap Bokeh/Panel/etc.
-_CDN_DOMAINS = [
-    "https://cdn.bokeh.org",
-    "https://cdn.holoviz.org",
-    "https://cdn.jsdelivr.net",
-    "https://cdn.plot.ly",
-    "https://unpkg.com",
-]
-
-
 @mcp.resource(
     SHOW_RESOURCE_URI,
     app=AppConfig(
         csp=ResourceCSP(
             resource_domains=[
                 "'unsafe-inline'",
-                *_CDN_DOMAINS,
+                "https://unpkg.com",
             ],
             frame_domains=_build_frame_domains(),
         )
@@ -653,8 +642,7 @@ async def show(
         snippet_id = response.get("id", "")
 
         if is_claude:
-            # Embed as srcdoc to bypass Claude Desktop's frame-src CSP; other clients use iframe.src directly.
-            # For method="server", real Python-callback patterns need a live server — show placeholder instead.
+            # Embed as srcdoc (Claude Desktop CSP); for method="server" with callbacks, show placeholder instead.
             _EMBED_SIZE_CAP = 300_000
             _real_server_patterns = ["pn.bind(", "hv.DynamicMap(", ".param.watch(", "@pn.depends", "Template", "pn.serve("]
             if method == "server" and any(p in code for p in _real_server_patterns):

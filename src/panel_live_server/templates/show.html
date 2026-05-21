@@ -211,13 +211,13 @@
         display: none;
         position: absolute;
         inset: 0;
-        border: 1px solid rgba(120, 120, 120, 0.3);
+        border: 1px dashed rgba(120, 120, 120, 0.3);
         border-radius: 8px;
-        background: rgba(128, 128, 128, 0.04);
+        background: rgba(128, 128, 128, 0.03);
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: 8px;
         padding: 24px;
         text-align: center;
         box-sizing: border-box;
@@ -225,24 +225,20 @@
 
       .panel-placeholder.visible { display: flex; }
 
-      .panel-placeholder p {
+      .panel-placeholder .placeholder-title {
         margin: 0;
         font-size: 0.85rem;
-        opacity: 0.75;
-        max-width: 30rem;
+        font-weight: 600;
+        opacity: 0.6;
+      }
+
+      .panel-placeholder .placeholder-sub {
+        margin: 0;
+        font-size: 0.78rem;
+        opacity: 0.45;
+        max-width: 26rem;
         line-height: 1.5;
       }
-
-      .panel-placeholder a {
-        border: 1px solid rgba(120, 120, 120, 0.4);
-        border-radius: 6px;
-        padding: 6px 14px;
-        font-size: 0.85rem;
-        text-decoration: none;
-        color: inherit;
-      }
-
-      .panel-placeholder a:hover { background: rgba(120, 120, 120, 0.12); }
     </style>
   </head>
   <body>
@@ -268,8 +264,8 @@
           <div id="error-body" class="error-body"></div>
         </div>
         <div id="panel-placeholder" class="panel-placeholder">
-          <p>This Panel dashboard requires a live Python server and cannot be previewed inline.</p>
-          <a id="panel-open-btn" href="#" target="_blank" rel="noopener">Open in Browser ↗</a>
+          <p class="placeholder-title">Live server required</p>
+          <p class="placeholder-sub">This visualization uses Panel widgets that need a running Python server. Copy the URL from the toolbar to open it in your browser.</p>
         </div>
         <iframe id="view" src="about:blank" title="show preview"></iframe>
       </div>
@@ -284,7 +280,6 @@
       const errorPanel = document.getElementById("error-panel");
       const errorBody = document.getElementById("error-body");
       const panelPlaceholder = document.getElementById("panel-placeholder");
-      const panelOpenBtn = document.getElementById("panel-open-btn");
       const copyCodeButton = document.getElementById("copy-code");
       const shareUrlButton  = document.getElementById("share-url");
       const zoomButtons = [
@@ -391,22 +386,6 @@
         if (ok) flashCopied(shareUrlButton);
       });
 
-      panelOpenBtn.addEventListener("click", async (e) => {
-        e.preventDefault();
-        const url = panelOpenBtn.href;
-        if (!url || url === "#") return;
-        const newWin = window.open(url, "_blank");
-        if (!newWin) {
-          // window.open blocked by webview — copy URL to clipboard instead
-          const ok = await copyToClipboard(url);
-          if (ok) {
-            const orig = panelOpenBtn.textContent;
-            panelOpenBtn.textContent = "URL copied — paste in browser ✓";
-            setTimeout(() => { panelOpenBtn.textContent = orig; }, 2000);
-          }
-        }
-      });
-
       copyCodeButton.addEventListener("click", async () => {
         const ok = await copyToClipboard(currentCode || "No code available.");
         if (ok) flashCopied(copyCodeButton);
@@ -472,11 +451,6 @@
           currentEmbedHtmlGz = "";
         }
 
-        // --- Rendering: three paths ---
-        // 1. embed_html_gz → jupyter method in Claude Desktop (srcdoc, CSP-safe)
-        // 2. panel_server  → panel method in Claude Desktop (placeholder + URL)
-        // 3. URL only      → panel method in other clients (iframe.src works fine)
-
         const isPanelServer = parsedPayload && parsedPayload.panel_server === true;
 
         // Reset all panels
@@ -511,8 +485,6 @@
           iframe.removeAttribute("srcdoc");
           iframe.src = "about:blank";
           iframe.style.display = "none";
-          panelOpenBtn.href = currentUrl || "#";
-          panelOpenBtn.style.display = currentUrl ? "" : "none";
           panelPlaceholder.classList.add("visible");
         } else if (currentUrl) {
           iframe.style.display = "";
