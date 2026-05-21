@@ -314,6 +314,7 @@
       let currentCode = "";
       let currentEmbedHtmlGz = "";
       let renderToken = 0;
+      let loadTimer = null;
 
       async function decompressGzipBase64(b64) {
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -322,14 +323,37 @@
       }
 
       function hideSpinner() {
+        clearTimeout(loadTimer);
+        loadTimer = null;
         loadingOverlay.classList.add("hidden");
+        loadingOverlay.classList.remove("blocked");
         loadingOverlay.innerHTML =
           '<div class="spinner"></div><span>Loading visualization…</span>';
       }
 
+      function showBlockedFallback() {
+        loadingOverlay.classList.remove("hidden");
+        loadingOverlay.classList.add("blocked");
+        loadingOverlay.innerHTML =
+          '<span style="font-size:0.85rem;opacity:0.8;text-align:center;max-width:34rem">Inline preview was blocked by the host app. Some MCP clients, including Claude Desktop, restrict iframe origins with Content Security Policy and will not embed <code>localhost</code> pages.</span>' +
+          (currentUrl
+            ? `<a href="${currentUrl}" target="_blank" rel="noopener" style="font-size:0.85rem;color:inherit;text-decoration:underline;text-underline-offset:2px">Open visualization in browser ↗</a>`
+            : "");
+      }
+
+      // Hide spinner when iframe finishes loading
       iframe.addEventListener("load", () => {
-        hideSpinner();
+        if (iframe.src && iframe.src !== "about:blank") {
+          hideSpinner();
+        }
       });
+
+      // Fallback: if load never fires within 10s, assume the host blocked iframe
+      // embedding (commonly due to CSP restrictions on localhost origins).
+      function startLoadTimer() {
+        clearTimeout(loadTimer);
+        loadTimer = setTimeout(showBlockedFallback, 10_000);
+      }
 
       async function copyToClipboard(text) {
         if (navigator.clipboard) {
@@ -454,19 +478,12 @@
         // 3. URL only      → panel method in other clients (iframe.src works fine)
 
         const isPanelServer = parsedPayload && parsedPayload.panel_server === true;
-        const isRewriteHint = parsedPayload && parsedPayload.rewrite_hint;
 
         // Reset all panels
         errorPanel.classList.remove("visible");
         panelPlaceholder.classList.remove("visible");
 
-        if (isRewriteHint) {
-          // Claude will auto-rewrite with jslink — keep iframe blank while it works
-          hideSpinner();
-          iframe.removeAttribute("srcdoc");
-          iframe.src = "about:blank";
-          iframe.style.display = "none";
-        } else if (currentEmbedHtmlGz) {
+        if (currentEmbedHtmlGz) {
           iframe.style.display = "";
           loadingOverlay.classList.remove("hidden");
           loadingOverlay.innerHTML =
@@ -504,6 +521,7 @@
             '<div class="spinner"></div><span>Loading visualization…</span>';
           iframe.removeAttribute("srcdoc");
           iframe.src = currentUrl;
+          startLoadTimer();
         } else {
           hideSpinner();
           iframe.src = "about:blank";

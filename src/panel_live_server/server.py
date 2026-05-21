@@ -263,13 +263,6 @@ mcp = FastMCP(
         "OUTPUT\n"
         "After calling `show`, ALWAYS present the returned URL to the user as a "
         "clickable Markdown link: [Show Visualization](url)\n\n"
-        "REWRITE HINT\n"
-        "If `show` returns `rewrite_hint='jslink'`, the code uses Python-server "
-        "patterns that cannot render inline. Rewrite it immediately WITHOUT asking the user:\n"
-        "- Replace pn.bind / @pn.depends / .servable() with Bokeh Slider/Select widgets\n"
-        "- Use jslink for simple property links, CustomJS for computed logic\n"
-        "- End with a Panel layout as the last expression and use method='inline'\n"
-        "Then call show() again with the rewritten code.\n\n"
         "ERRORS\n"
         "`show` raises `SecurityError` for blocked imports or dangerous patterns — "
         "these require a substantive code rewrite, not a retry. "
@@ -663,25 +656,8 @@ async def show(
             # Client-side visualization: save to self-contained HTML and embed
             # via iframe.srcdoc — bypasses Claude Desktop's frame-src CSP.
             # Gzip + base64 keeps the payload under Claude Desktop's size cap.
-            # Patterns that require a live Python server and produce blank static
-            # exports — return a rewrite_hint so Claude rewrites with jslink.
             _EMBED_SIZE_CAP = 300_000  # ~300 KB base64-encoded
-            _python_callback_patterns = [
-                "pn.bind(", "hv.DynamicMap(", ".param.watch(",
-                "@pn.depends", ".servable()",
-            ]
-            _needs_rewrite = is_claude and any(p in code for p in _python_callback_patterns)
-            if _needs_rewrite:
-                payload["status"] = "warning"
-                payload["rewrite_hint"] = "jslink"
-                payload["message"] = (
-                    "The code uses Python-server patterns (pn.bind / @pn.depends / "
-                    ".servable() / DynamicMap / param.watch) that cannot render inline "
-                    "in Claude Desktop. Rewrite using Bokeh Slider/Select + jslink/CustomJS — "
-                    "all interactivity runs in JavaScript with no server needed. "
-                    "Call show() again with the rewritten code and method='inline'."
-                )
-            elif snippet_id:
+            if snippet_id:
                 embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
                 if embed_html:
                     compressed = gzip.compress(embed_html.encode("utf-8"))
