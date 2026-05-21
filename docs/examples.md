@@ -196,7 +196,7 @@ pn.Column(metric, pn.bind(plot, metric))
 
 ## Panel dashboard
 
-A multi-component layout with a sidebar and reactive widgets. Use `method="panel"` and
+A multi-component layout with a sidebar and reactive widgets. Use `method="server"` and
 call `.servable()` on the objects you want displayed.
 
 ```python
@@ -237,7 +237,7 @@ pn.template.FastListTemplate(
 ## DataFrame table
 
 An interactive, sortable and filterable table using `pn.widgets.Tabulator`.
-Use `method="panel"`.
+Use `method="server"`.
 
 ```python
 import panel as pn

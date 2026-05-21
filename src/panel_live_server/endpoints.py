@@ -138,9 +138,8 @@ class EmbedEndpoint(RequestHandler):
             return
 
         try:
-            extensions = list(set(find_extensions(snippet.app)))
-            if extensions:
-                pn.extension(*extensions)
+            extensions = list({"bokeh"} | set(find_extensions(snippet.app)))
+            pn.extension(*extensions)
 
             preamble = "import panel as pn\n\npn.config.design = None\n\n"
             app = preamble + snippet.app

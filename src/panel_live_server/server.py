@@ -253,7 +253,7 @@ mcp = FastMCP(
         "LIBRARY SELECTION (prefer in this order when suitable):\n"
         "- hvPlot: quick interactive plots from DataFrames (.plot API)\n"
         "- HoloViews: advanced composable, interactive visualizations\n"
-        "- Panel: dashboards, data apps, complex layouts (use method='panel')\n"
+        "- Panel: dashboards, data apps, complex layouts (use method='server')\n"
         "- Matplotlib: publication-quality static plots\n"
         "- Plotly: interactive charts with 3D, hover\n"
         "- ECharts (pn.pane.ECharts): modern business-quality charts with data transitions and animations\n"
@@ -263,6 +263,13 @@ mcp = FastMCP(
         "OUTPUT\n"
         "After calling `show`, ALWAYS present the returned URL to the user as a "
         "clickable Markdown link: [Show Visualization](url)\n\n"
+        "REWRITE HINT\n"
+        "If `show` returns `rewrite_hint='jslink'`, the code uses Python-server "
+        "patterns that cannot render inline. Rewrite it immediately WITHOUT asking the user:\n"
+        "- Replace pn.bind / @pn.depends / .servable() with Bokeh Slider/Select widgets\n"
+        "- Use jslink for simple property links, CustomJS for computed logic\n"
+        "- End with a Panel layout as the last expression and use method='inline'\n"
+        "Then call show() again with the rewritten code.\n\n"
         "ERRORS\n"
         "`show` raises `SecurityError` for blocked imports or dangerous patterns — "
         "these require a substantive code rewrite, not a retry. "
@@ -656,40 +663,54 @@ async def show(
             # Client-side visualization: save to self-contained HTML and embed
             # via iframe.srcdoc — bypasses Claude Desktop's frame-src CSP.
             # Gzip + base64 keeps the payload under Claude Desktop's size cap.
-            if snippet_id:
+            # Patterns that require a live Python server and produce blank static
+            # exports — return a rewrite_hint so Claude rewrites with jslink.
+            _EMBED_SIZE_CAP = 300_000  # ~300 KB base64-encoded
+            _python_callback_patterns = [
+                "pn.bind(", "hv.DynamicMap(", ".param.watch(",
+                "@pn.depends", ".servable()",
+            ]
+            _needs_rewrite = is_claude and any(p in code for p in _python_callback_patterns)
+            if _needs_rewrite:
+                payload["status"] = "warning"
+                payload["rewrite_hint"] = "jslink"
+                payload["message"] = (
+                    "The code uses Python-server patterns (pn.bind / @pn.depends / "
+                    ".servable() / DynamicMap / param.watch) that cannot render inline "
+                    "in Claude Desktop. Rewrite using Bokeh Slider/Select + jslink/CustomJS — "
+                    "all interactivity runs in JavaScript with no server needed. "
+                    "Call show() again with the rewritten code and method='inline'."
+                )
+            elif snippet_id:
                 embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
                 if embed_html:
                     compressed = gzip.compress(embed_html.encode("utf-8"))
-                    payload["embed_html_gz"] = base64.b64encode(compressed).decode("ascii")
+                    encoded = base64.b64encode(compressed).decode("ascii")
+                    if len(encoded) <= _EMBED_SIZE_CAP:
+                        payload["embed_html_gz"] = encoded
+                    else:
+                        payload["panel_server"] = True
         elif method == "server" and is_claude:
-            # Detect avoidable panel usage: @pn.depends or .servable() without
-            # any real dashboard signals — these can be rewritten with jslink
-            # to render inline. Real dashboards pass through to the placeholder.
-            _real_dashboard_signals = [
-                "Template",   # FastListTemplate, MaterialTemplate, etc.
-                "pn.bind",    # reactive binding
-                "pn.state",   # server-side state
-                "pn.template",
-                "pn.serve",
-            ]
-            is_real_dashboard = any(s in code for s in _real_dashboard_signals)
-            is_avoidable = ("@pn.depends" in code or ".servable()" in code) and not is_real_dashboard
-
-            if is_avoidable:
-                raise ToolError(
-                    "This code uses @pn.depends or .servable() which requires a live Python "
-                    "server and cannot render inline in Claude Desktop.\n"
-                    "Rewrite using widget.jslink(plot, value='property') instead — "
-                    "it runs in JavaScript, no server needed, and renders inline.\n"
-                    "Examples:\n"
-                    "  slider.jslink(plot, value='glyph.fill_alpha')\n"
-                    "  slider.jslink(plot, value='glyph.size')\n"
-                    "  slider.jslink(plot, code={'value': 'x_range.start = cb_obj.value[0]'})\n"
-                    "Use method='jupyter' and end with pn.Column(widget, plot) as the last expression."
-                )
-
-            # Real Panel dashboard: needs live server, show placeholder with URL.
-            payload["panel_server"] = True
+            # If the code has no Python-callback patterns it's a static plot that
+            # happens to call .servable() — embed it inline just like method="inline".
+            # If it has callbacks (pn.bind, DynamicMap, param.watch, Templates, etc.)
+            # it genuinely needs a live server — show the placeholder.
+            _EMBED_SIZE_CAP = 300_000
+            _real_server_patterns = ["pn.bind(", "hv.DynamicMap(", ".param.watch(", "@pn.depends", "Template", "pn.serve("]
+            _is_real_server = any(p in code for p in _real_server_patterns)
+            if _is_real_server:
+                payload["panel_server"] = True
+            elif snippet_id:
+                embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
+                if embed_html:
+                    compressed = gzip.compress(embed_html.encode("utf-8"))
+                    encoded = base64.b64encode(compressed).decode("ascii")
+                    if len(encoded) <= _EMBED_SIZE_CAP:
+                        payload["embed_html_gz"] = encoded
+                    else:
+                        payload["panel_server"] = True
+                else:
+                    payload["panel_server"] = True
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
