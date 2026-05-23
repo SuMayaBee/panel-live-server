@@ -277,9 +277,7 @@ mcp = FastMCP(
         "- ECharts (pn.pane.ECharts): modern business-quality charts with data transitions and animations\n"
         "- Bokeh: low-level interactive web plots\n"
         "- deck.gl (pn.pane.DeckGL): large-scale geospatial and 3D data visualization\n"
-        "Always verify the library is installed via `list_packages` first.\n\n"
-        + _CLAUDE_DESKTOP_INSTRUCTIONS
-        + "OUTPUT\n"
+        "Always verify the library is installed via `list_packages` first.\n\n" + _CLAUDE_DESKTOP_INSTRUCTIONS + "OUTPUT\n"
         "After calling `show`, ALWAYS present the returned URL to the user as a "
         "clickable Markdown link: [Show Visualization](url)\n\n"
         "ERRORS\n"
