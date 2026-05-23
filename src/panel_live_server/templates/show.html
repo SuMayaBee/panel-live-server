@@ -206,38 +206,30 @@
         display: block;
       }
 
-      /* Panel-server placeholder — shown for method="server" in Claude Desktop */
+      /* Panel-server placeholder — just a centered button, no chrome */
       .panel-placeholder {
         display: none;
         position: absolute;
         inset: 0;
-        border: 1px dashed rgba(120, 120, 120, 0.3);
-        border-radius: 8px;
-        background: rgba(128, 128, 128, 0.03);
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 24px;
-        text-align: center;
-        box-sizing: border-box;
       }
 
       .panel-placeholder.visible { display: flex; }
 
-      .panel-placeholder .placeholder-title {
-        margin: 0;
-        font-size: 0.85rem;
-        font-weight: 600;
-        opacity: 0.6;
+      .panel-placeholder a[role="button"] {
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 9px 24px;
+        opacity: 1;
+        background: #1a1a1a;
+        color: #fff;
+        border-color: #1a1a1a;
       }
 
-      .panel-placeholder .placeholder-sub {
-        margin: 0;
-        font-size: 0.78rem;
-        opacity: 0.45;
-        max-width: 26rem;
-        line-height: 1.5;
+      .panel-placeholder a[role="button"]:hover {
+        background: #333;
+        border-color: #333;
       }
     </style>
   </head>
@@ -264,8 +256,7 @@
           <div id="error-body" class="error-body"></div>
         </div>
         <div id="panel-placeholder" class="panel-placeholder">
-          <p class="placeholder-title">Live server required</p>
-          <p class="placeholder-sub">Click the <strong>Show Visualization</strong> link in the chat to open it in your browser.</p>
+          <p class="placeholder-sub"></p>
         </div>
         <iframe id="view" src="about:blank" title="show preview"></iframe>
       </div>
@@ -456,9 +447,9 @@
         // Reset all panels
         errorPanel.classList.remove("visible");
         panelPlaceholder.classList.remove("visible");
+        zoomButtons.forEach(({ btn }) => btn.style.display = "");
 
         if (currentEmbedHtmlGz) {
-          iframe.style.display = "";
           loadingOverlay.classList.remove("hidden");
           loadingOverlay.innerHTML =
             '<div class="spinner"></div><span>Decompressing visualization…</span>';
@@ -484,7 +475,18 @@
           hideSpinner();
           iframe.removeAttribute("srcdoc");
           iframe.src = "about:blank";
-          iframe.style.display = "none";
+          zoomButtons.forEach(({ btn }) => btn.style.display = "none");
+          if (currentUrl) {
+            const btn = document.createElement("a");
+            btn.href = currentUrl;
+            btn.role = "button";
+            btn.textContent = "Open in browser ↗";
+            btn.addEventListener("click", (e) => {
+              e.preventDefault();
+              app.openLink({ url: currentUrl });
+            });
+            panelPlaceholder.querySelector(".placeholder-sub").replaceChildren(btn);
+          }
           panelPlaceholder.classList.add("visible");
         } else if (currentUrl) {
           iframe.style.display = "";
