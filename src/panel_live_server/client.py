@@ -48,7 +48,7 @@ class DisplayClient:
         except requests.RequestException:
             return False
 
-    def create_snippet(self, code: str, name: str = "", description: str = "", method: str = "inline") -> dict:
+    def create_snippet(self, code: str, name: str = "", description: str = "", method: str = "inline", validated: bool = False) -> dict:
         """Create a visualization snippet on the Display Server.
 
         Sends Python code to the server for execution and rendering.
@@ -63,6 +63,10 @@ class DisplayClient:
             Description of the visualization
         method : str, optional
             Execution method ("inline" or "server")
+        validated : bool, optional
+            When True, signals that the code was already validated and executed
+            by the MCP ``show`` tool, so the server can skip its redundant
+            storage-time validation and execution.
 
         Returns
         -------
@@ -84,6 +88,7 @@ class DisplayClient:
                     "name": name,
                     "description": description,
                     "method": method,
+                    "validated": validated,
                 },
                 timeout=self.timeout,
             )

@@ -74,13 +74,17 @@ class SnippetEndpoint(RequestHandler):
             name = request_body.get("name", "")
             description = request_body.get("description", "")
             method = request_body.get("method", "inline")
+            validated = request_body.get("validated", False)
 
-            # Call shared business logic
+            # Call shared business logic. When the MCP show tool has already
+            # validated and executed the code, skip the redundant storage-time
+            # validation so the snippet is not run a second time here.
             snippet = db.create_visualization(
                 app=code,
                 name=name,
                 description=description,
                 method=method,
+                skip_validation=validated,
             )
 
             if base_url := _get_external_base_url(self.request.host):
@@ -201,7 +205,7 @@ class EmbedEndpoint(RequestHandler):
 
             obj = pn.panel(result, sizing_mode="stretch_width")
             buf = io.StringIO()
-            obj.save(buf, resources="cdn", embed=True, max_states=500)
+            obj.save(buf, resources="cdn", embed=False)
             html = buf.getvalue()
 
             self.set_status(200)

@@ -327,6 +327,9 @@ def _build_frame_domains() -> list[str]:
                 "https://cdn.jsdelivr.net",
                 "https://cdn.plot.ly",
             ],
+            # Allow show.html JS to fetch /api/embed directly from the Panel server
+            # so embed generation is off the show() critical path (async in the browser).
+            connect_domains=_build_frame_domains(),
             frame_domains=_build_frame_domains(),
         )
     ),
@@ -642,6 +645,7 @@ async def show(
             name=name,
             description=description,
             method=method,
+            validated=True,
         )
         url = _externalize_url(response.get("url", ""))
 
