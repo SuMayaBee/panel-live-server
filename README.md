@@ -25,13 +25,19 @@ This project is **in its early stages**, so if you find a version that suits you
 
 ## Installation
 
+Install it via `uv`:
+
 ```bash
 uv tool install "panel-live-server[pydata]"
 ```
 
+Install it via `pip`:
+
 ```bash
 pip install "panel-live-server[pydata]"
 ```
+
+Install it via `pixi`:
 
 ```bash
 pixi add panel-live-server
