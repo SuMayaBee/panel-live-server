@@ -60,7 +60,7 @@ Fill in the form fields:
 
 - **Name**: "Product Sales Chart"
 - **Description**: "An interactive bar chart showing sales by product"
-- **Execution Method**: `jupyter` (default)
+- **Execution Method**: `inline` (default)
 
 Click **Submit**. You'll see a success message with a link to your new visualization.
 
@@ -79,7 +79,7 @@ hover over the bars to see the tooltips.
 
 ## Step 4: Try a Panel application
 
-The `panel` execution method lets you serve a full Panel app with reactive widgets. Go back to
+The `server` execution method lets you serve a full Panel app with reactive widgets. Go back to
 [/add](http://localhost:5077/add), clear the editor, and enter:
 
 ```python
@@ -129,7 +129,7 @@ response = requests.post(
     json={
         "code": "msg = 'Hello, Panel Live Server!'\nmsg",
         "name": "Hello World",
-        "method": "jupyter",
+        "method": "inline",
     }
 )
 

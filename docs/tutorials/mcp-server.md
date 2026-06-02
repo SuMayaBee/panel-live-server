@@ -14,11 +14,47 @@ asked an AI to produce a chart and seen it rendered live in your IDE.
 
 ## Step 1: Add Panel Live Server to your MCP configuration
 
-=== "Claude Code"
+=== "VS Code"
 
-    ```bash
-    claude mcp add panel-live-server -- pls mcp
+    Add to `.vscode/mcp.json` (create if it doesn't exist):
+
+    ```json
+    {
+      "servers": {
+        "panel-live-server": {
+          "type": "stdio",
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
+    }
     ```
+
+    !!! tip "Local repo"
+        Replace `"pls"` with the absolute path to your venv binary:
+        `"/path/to/panel-live-server/.venv/bin/pls"`
+
+=== "Cursor"
+
+    Add to `~/.cursor/mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "panel-live-server": {
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
+    }
+    ```
+
+    Open Cursor Settings → MCP and verify the green dot. MCP tools are only
+    available in **Agent mode** — not Normal chat mode.
+
+    !!! tip "Local repo"
+        Replace `"pls"` with the absolute path to your venv binary:
+        `"/path/to/panel-live-server/.venv/bin/pls"`
 
 === "Claude Desktop"
 
@@ -38,26 +74,61 @@ asked an AI to produce a chart and seen it rendered live in your IDE.
 
     Restart Claude Desktop.
 
+    !!! tip "Local repo"
+        Replace `"pls"` with the absolute path to your venv binary:
+        `"/path/to/panel-live-server/.venv/bin/pls"`
+
     !!! note
         Claude Desktop may block inline MCP App previews that iframe `http://localhost:5077/...`.
         This is enforced by Claude Desktop's own Content Security Policy, not by Panel Live Server.
         In that case the `show` tool still succeeds and you can open the returned visualization URL
         in your browser.
 
-=== "VS Code (MCP extension)"
+=== "Claude Code"
 
-    Add to your `.vscode/mcp.json`:
-
-    ```json
-    {
-      "servers": {
-        "panel-live-server": {
-          "command": "pls",
-          "args": ["mcp"]
-        }
-      }
-    }
+    ```bash
+    claude mcp add panel-live-server -- pls mcp
     ```
+
+    !!! tip "Local repo"
+        Use the absolute path to your venv binary instead:
+        ```bash
+        claude mcp add panel-live-server -- /path/to/panel-live-server/.venv/bin/pls mcp
+        ```
+
+=== "claude.ai"
+
+    claude.ai requires HTTP transport and a public URL. You can use any tunneling
+    service (ngrok, Cloudflare, localhost.run, etc.) — this example uses Cloudflare.
+    You need three terminals.
+
+    **Terminal 1** — start the MCP server (leave `EXTERNAL_URL` unset for now):
+
+    ```bash
+    pls mcp --transport http --port 8001
+    ```
+
+    **Terminal 2** — tunnel for the MCP server:
+
+    ```bash
+    cloudflared tunnel --url http://localhost:8001
+    ```
+
+    **Terminal 3** — tunnel for the Panel server:
+
+    ```bash
+    cloudflared tunnel --url http://localhost:5077
+    ```
+
+    Stop Terminal 1, set the Panel tunnel URL, and restart:
+
+    ```bash
+    export PANEL_LIVE_SERVER_EXTERNAL_URL=<url-from-terminal-3>
+    pls mcp --transport http --port 8001
+    ```
+
+    Then go to claude.ai → Settings → Connectors → Add custom connector and enter
+    `<url-from-terminal-2>/mcp` as the URL.
 
 When the MCP server starts, it automatically starts the Panel server in the background.
 You do not need to run `pls serve` separately.
@@ -120,7 +191,7 @@ Ask the AI to create a full Panel application:
 
 > Create an interactive dashboard for the penguins dataset with a dropdown to filter by species and an island selector. Show a scatter plot that updates when the filters change.
 
-The AI will use the `panel` execution method and produce a reactive Panel app with widgets.
+The AI will use the `server` execution method and produce a reactive Panel app with widgets.
 The dashboard updates in real time as you interact with it.
 
 ---
