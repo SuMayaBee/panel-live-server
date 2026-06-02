@@ -73,8 +73,8 @@ Browse your visualizations at [/feed](http://localhost:5077/feed), manage them a
 
 ### Two execution methods
 
-- **Jupyter** (default) — the last expression is automatically displayed, just like a notebook cell
-- **Panel** — explicit `.servable()` calls for multi-component dashboards with reactive widgets
+- **Inline** (default) — the last expression is automatically displayed, just like a notebook cell
+- **Server** — explicit `.servable()` calls for multi-component dashboards with reactive widgets
 
 ### Works with any Python visualization library
 
@@ -109,7 +109,7 @@ import requests
 
 response = requests.post(
     "http://localhost:5077/api/snippet",
-    json={"code": "1 + 1", "name": "Addition", "method": "jupyter"}
+    json={"code": "1 + 1", "name": "Addition", "method": "inline"}
 )
 print(response.json()["url"])
 ```
@@ -123,37 +123,60 @@ automatically externalized via Jupyter Server Proxy when needed.
 
 ## Installation
 
-```bash
-pip install panel-live-server
-```
+=== "uv"
 
-With the full PyData stack (hvplot, plotly, altair, polars, etc.):
+    ```bash
+    uv tool install "panel-live-server[pydata]"
+    ```
 
-```bash
-pip install "panel-live-server[pydata]"
-```
+=== "pip"
 
-Via conda / pixi:
+    ```bash
+    pip install "panel-live-server[pydata]"
+    ```
 
-```bash
-pixi add panel-live-server
-```
+=== "pixi"
+
+    ```bash
+    pixi add panel-live-server
+    ```
+
+The `[pydata]` extra includes the full visualization stack (hvplot, plotly, altair, polars, etc.).
 
 !!! warning "Pin your version"
 
     This project is in its early stages. Pin to a specific version to avoid unexpected changes:
 
     ```bash
-    pip install panel-live-server==0.1.0a1
+    uv tool install "panel-live-server[pydata]==0.1.0a1"
+    pip install "panel-live-server[pydata]==0.1.0a1"
     ```
 
 ---
 
 ## Quick start
 
-=== "MCP (Claude Code)"
+**With an AI assistant** — configure once, then ask your AI to create visualizations with natural language.
 
-    Add to your MCP configuration:
+=== "VS Code"
+
+    Add to `.vscode/mcp.json` (create if it doesn't exist):
+
+    ```json
+    {
+      "servers": {
+        "panel-live-server": {
+          "type": "stdio",
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
+    }
+    ```
+
+=== "Cursor"
+
+    Add to `~/.cursor/mcp.json`:
 
     ```json
     {
@@ -166,17 +189,76 @@ pixi add panel-live-server
     }
     ```
 
+    Open Cursor Settings → MCP and verify the green dot. Use Agent mode in chat.
+
+=== "Claude Desktop"
+
+    Edit the config file for your OS:
+
+    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+    - **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+    ```json
+    {
+      "mcpServers": {
+        "panel-live-server": {
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
+    }
+    ```
+
+    Restart Claude Desktop.
+
+=== "Claude Code"
+
+    ```bash
+    claude mcp add panel-live-server -- pls mcp
+    ```
+
     The AI will automatically call `validate` first, then `show` — errors are caught before
     rendering so you always get clear, actionable feedback instead of a blank panel.
 
-    Ask your AI: *"Show me a scatter plot of this data using the show tool."*
+=== "claude.ai"
 
-=== "Standalone"
+    claude.ai requires HTTP transport and a public URL. You can use any tunneling service
+    (ngrok, Cloudflare, localhost.run, etc.) — this example uses Cloudflare.
+
+    **Terminal 1** — start the MCP server:
 
     ```bash
-    pls serve
-    # Open http://localhost:5077/add in your browser
+    pls mcp --transport http --port 8001
     ```
+
+    **Terminal 2** — tunnel for the MCP server:
+
+    ```bash
+    cloudflared tunnel --url http://localhost:8001
+    ```
+
+    **Terminal 3** — tunnel for the Panel server:
+
+    ```bash
+    cloudflared tunnel --url http://localhost:5077
+    ```
+
+    Stop Terminal 1, set the Panel tunnel URL, and restart:
+
+    ```bash
+    export PANEL_LIVE_SERVER_EXTERNAL_URL=<url-from-terminal-3>
+    pls mcp --transport http --port 8001
+    ```
+
+    Then go to claude.ai → Settings → Connectors → Add custom connector and enter
+    `<url-from-terminal-2>/mcp` as the URL.
+
+Once connected, ask your AI: *"Show me a scatter plot of this data using the show tool."*
+
+---
+
+**Without an AI assistant** — use the REST API or the browser UI directly.
 
 === "REST API"
 
@@ -188,10 +270,17 @@ pixi add panel-live-server
         json={
             "code": "import panel as pn\npn.widgets.IntSlider(name='x', start=0, end=100)",
             "name": "Slider",
-            "method": "jupyter",
+            "method": "inline",
         }
     )
     print(r.json()["url"])  # http://localhost:5077/view?id=...
+    ```
+
+=== "Standalone"
+
+    ```bash
+    pls serve
+    # Open http://localhost:5077/add in your browser
     ```
 
 ---

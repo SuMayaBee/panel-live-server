@@ -49,7 +49,7 @@ show(
     code="df.hvplot.bar(x='Product', y='Sales')",
     name="Sales Chart",
     description="Bar chart of product sales",
-    method="jupyter",
+    method="inline",
     zoom=75
 )
 ```
@@ -59,7 +59,7 @@ The tool accepts:
 - **code** (required): Python code to execute
 - **name**: Human-readable title
 - **description**: One-sentence explanation
-- **method**: Execution method — `"jupyter"` (default) or `"panel"`
+- **method**: Execution method — `"inline"` (default) or `"server"`
 - **zoom**: Initial zoom level — `25`, `50`, `75`, or `100`
 
 ---
@@ -109,7 +109,7 @@ A **snippet** is a stored code sample with metadata. Each snippet has:
 - Detected package imports and Panel extensions
 - Execution method and timestamps
 
-### Jupyter Method (Default)
+### Inline Method (Default)
 
 Executes code like a Jupyter notebook cell. The last expression is captured and wrapped with
 `pn.panel()` for display:
@@ -122,7 +122,7 @@ df  # This expression is displayed
 
 Best for: data exploration, quick charts, any Python object (DataFrames, plots, widgets).
 
-### Panel Method
+### Server Method
 
 Executes code that explicitly calls `.servable()` on Panel components. Multiple objects can be
 served in a single snippet:

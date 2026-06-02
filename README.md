@@ -25,11 +25,33 @@ This project is **in its early stages**, so if you find a version that suits you
 
 ## Installation
 
+Install it via `uv`:
+
+```bash
+uv tool install "panel-live-server[pydata]"
+```
+
 Install it via `pip`:
 
 ```bash
-pip install panel-live-server
+pip install "panel-live-server[pydata]"
 ```
+
+Install it via `pixi`:
+
+```bash
+pixi add panel-live-server
+```
+
+## Connect to your AI assistant
+
+| Client | Setup |
+|---|---|
+| **VS Code** | Add to `.vscode/mcp.json` — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
+| **Cursor** | Add to `~/.cursor/mcp.json` — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
+| **Claude Desktop** | Add to `claude_desktop_config.json` — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
+| **Claude Code** | `claude mcp add panel-live-server -- pls mcp` |
+| **claude.ai** | HTTP transport + Cloudflare tunnel — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
 
 ## Usage
 
