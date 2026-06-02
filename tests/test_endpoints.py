@@ -20,9 +20,7 @@ class _FakeDB:
         self.skip_validation_seen: bool | None = None
         self.raise_value_error: bool = False
 
-    def create_visualization(
-        self, app: str, name: str = "", description: str = "", method: str = "inline", skip_validation: bool = False
-    ) -> SimpleNamespace:
+    def create_visualization(self, app: str, name: str = "", description: str = "", method: str = "inline", skip_validation: bool = False) -> SimpleNamespace:
         self.method_seen = method
         self.skip_validation_seen = skip_validation
         if self.raise_value_error:
