@@ -25,10 +25,16 @@ This project is **in its early stages**, so if you find a version that suits you
 
 ## Installation
 
-Install it via `uv`:
-
 ```bash
 uv tool install "panel-live-server[pydata]"
+```
+
+```bash
+pip install "panel-live-server[pydata]"
+```
+
+```bash
+pixi add panel-live-server
 ```
 
 ## Connect to your AI assistant
