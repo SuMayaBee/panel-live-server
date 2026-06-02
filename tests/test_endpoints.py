@@ -17,10 +17,12 @@ class _FakeDB:
 
     def __init__(self) -> None:
         self.method_seen: str | None = None
+        self.skip_validation_seen: bool | None = None
         self.raise_value_error: bool = False
 
-    def create_visualization(self, app: str, name: str = "", description: str = "", method: str = "inline") -> SimpleNamespace:
+    def create_visualization(self, app: str, name: str = "", description: str = "", method: str = "inline", skip_validation: bool = False) -> SimpleNamespace:
         self.method_seen = method
+        self.skip_validation_seen = skip_validation
         if self.raise_value_error:
             raise ValueError("Unsupported execution method 'invalid'. Supported methods: jupyter, panel, pyodide")
         return SimpleNamespace(id="snippet-123", error_message=None)

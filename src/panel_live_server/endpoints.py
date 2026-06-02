@@ -48,13 +48,15 @@ class SnippetEndpoint(RequestHandler):
             name = request_body.get("name", "")
             description = request_body.get("description", "")
             method = request_body.get("method", "inline")
+            validated = request_body.get("validated", False)
 
-            # Call shared business logic
+            # Skip validation if already done by the MCP show tool.
             snippet = db.create_visualization(
                 app=code,
                 name=name,
                 description=description,
                 method=method,
+                skip_validation=validated,
             )
 
             if base_url := _get_external_base_url(self.request.host):
