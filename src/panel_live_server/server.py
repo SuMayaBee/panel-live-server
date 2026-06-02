@@ -605,6 +605,7 @@ async def show(
             name=name,
             description=description,
             method=method,
+            validated=True,
         )
         url = _externalize_url(response.get("url", ""))
 
