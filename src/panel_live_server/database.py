@@ -444,6 +444,7 @@ class SnippetDatabase:
         description: str = "",
         readme: str = "",
         method: Literal["inline", "server", "pyodide"] = "inline",
+        skip_validation: bool = False,
     ) -> Snippet:
         """Create a visualization request.
 
@@ -462,6 +463,12 @@ class SnippetDatabase:
             Longer documentation describing the app
         method : str, optional
             Execution method: "inline", "server", or "pyodide"
+        skip_validation : bool, optional
+            When True, skip the syntax/security/package/extension/format/runtime
+            layers because the caller (the MCP ``show`` tool) has already
+            validated and executed the code. Avoids running the snippet a second
+            time on the render hot path. The web ``/add`` form leaves this False
+            so untrusted input is still fully validated.
 
         Returns
         -------
@@ -486,27 +493,29 @@ class SnippetDatabase:
             supported_text = ", ".join(sorted(supported_methods))
             raise ValueError(f"Unsupported execution method '{method}'. Supported methods: {supported_text}")
 
-        # Layer 1 — Syntax
-        if err := ast_check(app):
-            raise SyntaxError(err)
+        validation_result = ""
+        if not skip_validation:
+            # Layer 1 — Syntax
+            if err := ast_check(app):
+                raise SyntaxError(err)
 
-        # Layer 2 — Security (raises SecurityError)
-        ruff_check(app)
+            # Layer 2 — Security (raises SecurityError)
+            ruff_check(app)
 
-        # Layer 3 — Package availability
-        if err := check_packages(app):
-            raise ValueError(err)
+            # Layer 3 — Package availability
+            if err := check_packages(app):
+                raise ValueError(err)
 
-        # Layer 4 — Panel extension availability (raises ExtensionError)
-        # inline method auto-injects extensions at render time; only enforce for server.
-        if method == "server":
-            validate_extension_availability(app)
+            # Layer 4 — Panel extension availability (raises ExtensionError)
+            # inline method auto-injects extensions at render time; only enforce for server.
+            if method == "server":
+                validate_extension_availability(app)
 
-        # Format before storage and runtime execution
-        app = ruff_format(app)
+            # Format before storage and runtime execution
+            app = ruff_format(app)
 
-        # Layer 5 — Runtime execution (threaded, stores error but does not block)
-        validation_result = validate_code(app)
+            # Layer 5 — Runtime execution (threaded, stores error but does not block)
+            validation_result = validate_code(app)
 
         # Infer requirements and extensions
         requirements = find_requirements(app)

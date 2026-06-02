@@ -76,18 +76,69 @@ pls mcp --transport sse
 The Panel server starts automatically in the background. You do not need to run `pls serve`
 separately.
 
-### Example: Claude Code MCP configuration
+=== "VS Code"
 
-```json
-{
-  "mcpServers": {
-    "panel-live-server": {
-      "command": "pls",
-      "args": ["mcp"]
+    Add to `.vscode/mcp.json`:
+
+    ```json
+    {
+      "servers": {
+        "panel-live-server": {
+          "type": "stdio",
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
+    ```
+
+=== "Cursor"
+
+    Add to `~/.cursor/mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "panel-live-server": {
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
+    }
+    ```
+
+=== "Claude Desktop"
+
+    Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
+    `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+    ```json
+    {
+      "mcpServers": {
+        "panel-live-server": {
+          "command": "pls",
+          "args": ["mcp"]
+        }
+      }
+    }
+    ```
+
+=== "Claude Code"
+
+    ```bash
+    claude mcp add panel-live-server -- pls mcp
+    ```
+
+=== "claude.ai"
+
+    claude.ai requires HTTP transport. Start with:
+
+    ```bash
+    pls mcp --transport http --port 8001
+    ```
+
+    Then expose it publicly via Cloudflare tunnel — see the
+    [MCP server tutorial](../tutorials/mcp-server.md) for the full setup.
 
 ### Example: Custom port via environment variable
 
@@ -107,11 +158,10 @@ separately.
 
 ---
 
-## Jupyter and Remote Development Environments
+## External URL and Remote Environments
 
-In Jupyter environments (JupyterHub, VS Code Dev Containers, GitHub Codespaces), Panel Live Server
-automatically detects the external URL and externalizes visualization URLs so they are accessible
-from your browser.
+Panel Live Server needs to know its public URL when running behind a proxy or tunnel so that
+visualization URLs returned to clients are reachable from the browser.
 
 The following environment variables are detected automatically (in priority order):
 
@@ -121,10 +171,24 @@ The following environment variables are detected automatically (in priority orde
 | `JUPYTERHUB_HOST` + `JUPYTERHUB_SERVICE_PREFIX` | JupyterHub with [jupyter-server-proxy](https://jupyter-server-proxy.readthedocs.io/) |
 | `CODESPACE_NAME` + `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` | GitHub Codespaces |
 
-In a JupyterHub deployment with jupyter-server-proxy, `JUPYTERHUB_SERVICE_PREFIX` is set
-automatically by JupyterHub. However, `JUPYTERHUB_HOST` is **only** set automatically in
-subdomain-based routing mode. In the more common path-based routing mode, you must set it
-manually, for example in your MCP configuration:
+### claude.ai
+
+claude.ai requires a public URL. Expose the Panel server via a tunnel (Cloudflare, ngrok,
+localhost.run, etc.) and set the URL before starting the MCP server:
+
+```bash
+cloudflared tunnel --url http://localhost:5077   # copy the printed URL
+export PANEL_LIVE_SERVER_EXTERNAL_URL=<url-from-above>
+pls mcp --transport http --port 8001
+```
+
+See the [MCP server tutorial](../tutorials/mcp-server.md) for the full three-terminal setup.
+
+### JupyterHub
+
+`JUPYTERHUB_SERVICE_PREFIX` is set automatically by JupyterHub. However, `JUPYTERHUB_HOST`
+is only set automatically in subdomain-based routing mode. In the more common path-based
+routing mode, set it manually in your MCP configuration:
 
 ```json
 {
@@ -140,12 +204,16 @@ manually, for example in your MCP configuration:
 }
 ```
 
-Alternatively, set the full URL explicitly:
+Or set the full URL explicitly:
 
 ```bash
 export PANEL_LIVE_SERVER_EXTERNAL_URL="https://your-hub/user/you/proxy/5077"
 pls mcp
 ```
+
+### GitHub Codespaces
+
+URL detection is automatic — no configuration needed.
 
 ---
 

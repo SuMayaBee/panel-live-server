@@ -74,6 +74,38 @@ No server restart is needed — the package is available immediately the next ti
 
 ---
 
+---
+
+## Development install (local repo)
+
+Clone the repository and install in editable mode so changes to the source take effect immediately.
+
+=== "pixi"
+
+    ```bash
+    git clone https://github.com/panel-extensions/panel-live-server.git
+    cd panel-live-server
+    pixi install
+    pixi run postinstall
+    pixi run pls --version
+    ```
+
+=== "uv"
+
+    ```bash
+    git clone https://github.com/panel-extensions/panel-live-server.git
+    cd panel-live-server
+    uv venv && source .venv/bin/activate
+    uv pip install -e ".[dev]"
+    pls --version
+    ```
+
+!!! note
+    Activate your venv (`source .venv/bin/activate`) in every new terminal, or prefix
+    commands with `pixi run` if using pixi.
+
+---
+
 ## What You've Learned
 
 - Install Panel Live Server as a uv tool with the `[pydata]` extras

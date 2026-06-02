@@ -11,7 +11,7 @@ your development workflow.
 - Create visualizations using the web interface (standalone mode)
 - Create visualizations using AI assistants (MCP tool mode)
 - View, browse, and manage your visualizations
-- Understand execution methods (Jupyter vs Panel)
+- Understand execution methods (Inline vs Server)
 - Create visualizations programmatically using the REST API
 
 ## What You'll Need
@@ -94,7 +94,7 @@ Fill in the form fields:
 
 - **Name**: "Product Sales Chart"
 - **Description**: "An interactive bar chart showing sales by product"
-- **Execution Method**: `jupyter` (default)
+- **Execution Method**: `inline` (default)
 
 Click **Submit**. You'll see a success message with a link to your visualization.
 
@@ -135,7 +135,7 @@ response = requests.post(
     json={
         "code": "a = 'Hello, Panel Live Server!'\na",
         "name": "Hello World",
-        "method": "jupyter"
+        "method": "inline"
     }
 )
 
@@ -218,7 +218,7 @@ The AI iterates on your work, creating new visualizations that build on previous
 
 ## Understanding Execution Methods
 
-### Jupyter Method (Default)
+### Inline Method (Default)
 
 Executes code like a Jupyter notebook cell — the last expression is automatically displayed:
 
@@ -230,7 +230,7 @@ df  # This is displayed
 
 Use this for data exploration, quick charts, and simple visualizations.
 
-### Panel Method
+### Server Method
 
 For Panel dashboard applications with explicit `.servable()` calls:
 
@@ -301,7 +301,7 @@ confirm the system is working.
 - Start Panel Live Server standalone or via MCP
 - Create visualizations using the web interface, REST API, and AI assistants
 - View, browse, and manage your visualizations
-- Use Jupyter and Panel execution methods
+- Use Inline and Server execution methods
 - Build interactive dashboards with natural language
 
 ## Next Steps
