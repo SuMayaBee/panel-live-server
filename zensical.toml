@@ -9,6 +9,7 @@ nav = [
   {"Home" = "index.md"},
   {"Tutorials" = [
     {"Installation" = "tutorials/installation.md"},
+    {"Contributing" = "tutorials/contributing.md"},
     {"Standalone Server" = "tutorials/standalone-server.md"},
     {"MCP Server" = "tutorials/mcp-server.md"}
   ]},
@@ -18,10 +19,6 @@ nav = [
   {"Explanation" = [
     {"Architecture" = "explanation/architecture.md"}
   ]},
-  {"Reference" = [
-    {"API Reference" = "reference/panel_live_server.md"},
-    {"Examples" = "examples.md"}
-  ]}
 ]
 
 # Theme configuration
