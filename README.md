@@ -5,11 +5,9 @@
 [![pypi-version](https://img.shields.io/pypi/v/panel-live-server.svg?logo=pypi&logoColor=white&style=flat-square)](https://pypi.org/project/panel-live-server)
 [![python-version](https://img.shields.io/pypi/pyversions/panel-live-server?logoColor=white&logo=python&style=flat-square)](https://pypi.org/project/panel-live-server)
 
-
-Panel Live Server is a local Panel web server and MCP server that executes
-  Python code snippets and renders the resulting visualizations
-  as live, interactive web pages — enabling humans and AI assistants to
-  display and inspect Python outputs in real time.
+Panel Live Server is a local Panel web server and MCP server that executes Python code snippets
+and renders the resulting visualizations as live, interactive web pages — enabling humans and AI
+assistants to display and inspect Python outputs in real time.
 
 ![panel-live-server showcase](https://raw.githubusercontent.com/panel-extensions/panel-live-server/main/docs/assets/gif/panel-live-server-showcase.gif)
 
@@ -17,46 +15,41 @@ Panel Live Server is a local Panel web server and MCP server that executes
 
 ## Features
 
-panel-live-server
-
-## Pin your version!
-
-This project is **in its early stages**, so if you find a version that suits your needs, it’s recommended to **pin your version**, as updates may introduce changes.
+- **Two interfaces** — `pls serve` (standalone browser UI) and `pls mcp` (MCP server for AI assistants)
+- **Any visualization library** — hvplot · plotly · altair · matplotlib · seaborn · holoviews · bokeh · and more
+- **Validate before render** — syntax, security, package, and extension checks before any rendering happens
+- **Persistent storage** — SQLite database with full-text search; every snippet gets its own permanent URL
+- **Auto-restart** — Panel subprocess is health-monitored and automatically restarted on failure
+- **Works everywhere** — local, JupyterHub, GitHub Codespaces; URLs externalized automatically
 
 ## Installation
 
-Install it via `uv`:
+Install via uv, pip, or pixi — see the [Installation guide](https://panel-extensions.github.io/panel-live-server/tutorials/installation/) for full instructions including how to find your `pls` path.
 
 ```bash
 uv tool install "panel-live-server[pydata]"
 ```
 
-Install it via `pip`:
-
-```bash
-pip install "panel-live-server[pydata]"
-```
-
-Install it via `pixi`:
-
-```bash
-pixi add panel-live-server
-```
+> **Pin your version** — this project is in its early stages. Pin to a specific version to avoid
+> unexpected changes: `uv tool install "panel-live-server[pydata]==0.1.0a1"`
 
 ## Connect to your AI assistant
 
-| Client | Setup |
+Use the **absolute path** printed by `which pls` above — not just `pls`.
+Full setup instructions for each client: [docs → Connect to your MCP client](https://panel-extensions.github.io/panel-live-server/tutorials/installation/#connect-to-your-mcp-client)
+
+| Client | Config location |
 |---|---|
-| **VS Code** | Add to `.vscode/mcp.json` — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
-| **Cursor** | Add to `~/.cursor/mcp.json` — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
-| **Claude Desktop** | Add to `claude_desktop_config.json` — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
-| **Claude Code** | `claude mcp add panel-live-server -- pls mcp` |
-| **claude.ai** | HTTP transport + Cloudflare tunnel — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/mcp-server/) |
+| **VS Code** | `.vscode/mcp.json` |
+| **Cursor** | `~/.cursor/mcp.json` |
+| **Claude Desktop** | `claude_desktop_config.json` |
+| **Claude Code** | `claude mcp add panel-live-server -- /path/to/pls mcp` |
+| **claude.ai** | HTTP transport + tunnel — see [docs](https://panel-extensions.github.io/panel-live-server/tutorials/installation/#connect-to-your-mcp-client) |
 
 ## Usage
 
-```bash
- $ pls
+```
+$ pls
 
  Usage: pls [OPTIONS] COMMAND [ARGS]...
 
@@ -74,46 +67,15 @@ pixi add panel-live-server
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-You can also use `panel-live-server` but `pls` is shorter, easy to remember and fun to use - pls use it 😄.
+You can also use `panel-live-server` but `pls` is shorter and easier to remember.
 
 ## Development
 
-```bash
-git clone https://github.com/panel-extensions/panel-live-server
-cd panel-live-server
-```
-
-For a simple setup use [`uv`](https://docs.astral.sh/uv/):
-
-```bash
-uv venv
-source .venv/bin/activate # on linux. Similar commands for windows and osx
-uv pip install -e .[dev]
-pre-commit run install
-pytest tests
-```
-
-For the full Github Actions setup use [pixi](https://pixi.sh):
-
-```bash
-pixi run pre-commit-install
-pixi run postinstall
-pixi run test
-```
-
-This repository is based on [copier-template-panel-extension](https://github.com/panel-extensions/copier-template-panel-extension) (you can create your own Panel extension with it)!
-
-To update to the latest template version run:
-
-```bash
-pixi exec --spec copier --spec ruamel.yaml -- copier update --defaults --trust
-```
-
-Note: `copier` will show `Conflict` for files with manual changes during an update. This is normal. As long as there are no merge conflict markers, all patches applied cleanly.
+See the [Contributing guide](https://panel-extensions.github.io/panel-live-server/tutorials/contributing/) for the full setup (fork, install, connect to MCP client, run tests).
 
 ## ❤️ Contributing
 
-Contributions are welcome! Please follow these steps to contribute:
+Contributions are welcome! Please follow these steps:
 
 1. Fork the repository.
 2. Create a new branch: `git checkout -b feature/YourFeature`.
@@ -121,4 +83,4 @@ Contributions are welcome! Please follow these steps to contribute:
 4. Push to the branch: `git push origin feature/YourFeature`.
 5. Open a pull request.
 
-Please ensure your code adheres to the project's coding standards and passes all tests.
+Please ensure your code passes all tests and linting before submitting.
