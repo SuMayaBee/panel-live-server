@@ -213,6 +213,9 @@
         inset: 0;
         align-items: center;
         justify-content: center;
+        background: white;
+        border: 1px solid rgba(120, 120, 120, 0.4);
+        border-radius: 8px;
       }
 
       .panel-placeholder.visible { display: flex; }
@@ -475,6 +478,7 @@
           hideSpinner();
           iframe.removeAttribute("srcdoc");
           iframe.src = "about:blank";
+          iframe.style.display = "none";
           zoomButtons.forEach(({ btn }) => btn.style.display = "none");
           if (currentUrl) {
             const btn = document.createElement("a");
