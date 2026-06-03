@@ -28,11 +28,10 @@ This project is **in its early stages**, so if you find a version that suits you
 Install it via `uv`:
 
 ```bash
+# Install
 uv tool install "panel-live-server[pydata]"
-```
 
-Find the `pls` path:
-```bash
+# Find the pls path
 which pls
 # typically: /home/<user>/.local/bin/pls
 ```
@@ -40,13 +39,14 @@ which pls
 Install it via `pip`:
 
 ```bash
+# Create and activate a virtual environment
 python -m venv venv
 source venv/bin/activate  # on Linux/macOS
-pip install "panel-live-server[pydata]"
-```
 
-Find the `pls` path:
-```bash
+# Install
+pip install "panel-live-server[pydata]"
+
+# Find the pls path
 which pls
 # typically: /path/to/venv/bin/pls
 ```
@@ -54,13 +54,12 @@ which pls
 Install it via `pixi`:
 
 ```bash
+# Initialize and install
 pixi init
 pixi add python
 pixi add --pypi "panel-live-server[pydata]"
-```
 
-Find the `pls` path:
-```bash
+# Find the pls path
 pixi run which pls
 # typically: /path/to/project/.pixi/envs/default/bin/pls
 ```
