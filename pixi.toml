@@ -16,6 +16,8 @@ pip = "*"
 hatchling = "*"
 hatch-vcs = "*"
 panel = ">=1.5.0"
+holoviews = ">=1.19"
+hvplot = ">=0.10"
 setuptools = ">=61"
 setuptools-scm = "*"
 

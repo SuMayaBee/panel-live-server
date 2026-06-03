@@ -6,6 +6,8 @@ for executing Python code and rendering visualizations via a Panel web server.
 
 import asyncio
 import atexit
+import base64
+import gzip
 import json
 import logging
 import os
@@ -140,6 +142,17 @@ def _externalize_url(url: str) -> str:
     return f"{external_url.rstrip('/')}{path}{query}"
 
 
+def _get_mcp_client_name(ctx: Context | None) -> str:
+    """Return the MCP client name from the initialize handshake (lowercased).
+
+    Claude Desktop sends ``'claude-ai'``. Returns empty string if unavailable.
+    """
+    try:
+        return ctx.request_context.session.client_params.clientInfo.name.lower()  # type: ignore[union-attr]
+    except Exception:
+        return ""
+
+
 def _start_panel_server() -> tuple[PanelServerManager | None, DisplayClient | None]:
     """Start the Panel server subprocess and create a client."""
     config = get_config()
@@ -218,6 +231,24 @@ async def app_lifespan(app):
         _cleanup()
 
 
+_CLAUDE_DESKTOP_INSTRUCTIONS = (
+    "IF YOU ARE CLAUDE DESKTOP\n"
+    "Visualizations are embedded inline in the chat via srcdoc — no live server connection. "
+    "Follow these rules strictly:\n"
+    "- For ANY interactive visualization (sliders, dropdowns, buttons): use Bokeh widgets "
+    "  (Slider, Select, CheckboxGroup) with jslink or CustomJS. "
+    "  Do NOT use pn.bind, @pn.depends, param.watch, or .servable() — "
+    "  these require a live Python server and will NOT work inline.\n"
+    "- Use method='inline' for all plots, static or interactive.\n"
+    "- Use method='server' ONLY for complex Panel dashboards that truly need a running Python server "
+    "  (e.g. FastListTemplate, real-time streaming, database queries). "
+    "  The user will need to open these via the 'Show Visualization' link.\n\n"
+    "IF YOU ARE ANY OTHER CLIENT (Cursor, VS Code, etc.)\n"
+    "Visualizations load via iframe.src — the live server is always reachable. "
+    "Use Panel reactive patterns (pn.bind, @pn.depends) freely. "
+    "Use method='server' for any interactive Panel app.\n\n"
+)
+
 mcp = FastMCP(
     "Panel Live Server",
     instructions=(
@@ -240,14 +271,13 @@ mcp = FastMCP(
         "LIBRARY SELECTION (prefer in this order when suitable):\n"
         "- hvPlot: quick interactive plots from DataFrames (.plot API)\n"
         "- HoloViews: advanced composable, interactive visualizations\n"
-        "- Panel: dashboards, data apps, complex layouts (use method='panel')\n"
+        "- Panel: dashboards, data apps, complex layouts (use method='server')\n"
         "- Matplotlib: publication-quality static plots\n"
         "- Plotly: interactive charts with 3D, hover\n"
         "- ECharts (pn.pane.ECharts): modern business-quality charts with data transitions and animations\n"
         "- Bokeh: low-level interactive web plots\n"
         "- deck.gl (pn.pane.DeckGL): large-scale geospatial and 3D data visualization\n"
-        "Always verify the library is installed via `list_packages` first.\n\n"
-        "OUTPUT\n"
+        "Always verify the library is installed via `list_packages` first.\n\n" + _CLAUDE_DESKTOP_INSTRUCTIONS + "OUTPUT\n"
         "After calling `show`, ALWAYS present the returned URL to the user as a "
         "clickable Markdown link: [Show Visualization](url)\n\n"
         "ERRORS\n"
@@ -292,6 +322,10 @@ def _build_frame_domains() -> list[str]:
             resource_domains=[
                 "'unsafe-inline'",
                 "https://unpkg.com",
+                "https://cdn.bokeh.org",
+                "https://cdn.holoviz.org",
+                "https://cdn.jsdelivr.net",
+                "https://cdn.plot.ly",
             ],
             frame_domains=_build_frame_domains(),
         )
@@ -557,6 +591,9 @@ async def show(
     """
     global _manager, _client
 
+    client_name = _get_mcp_client_name(ctx)
+    is_claude = client_name == "claude-ai"
+
     # Clamp zoom to nearest valid level
     _valid_zooms = [25, 50, 75, 100]
     zoom = min(_valid_zooms, key=lambda z: abs(z - zoom))
@@ -623,6 +660,26 @@ async def show(
             # Runtime error detected at storage time — raise so the LLM gets a
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
+
+        snippet_id = response.get("id", "")
+
+        if is_claude:
+            # Embed as srcdoc to bypass Claude Desktop's frame-src CSP.
+            # If embed is empty (e.g. pn.bind / DynamicMap need a live server), fall back to placeholder.
+            _EMBED_SIZE_CAP = 150_000
+            if snippet_id:
+                embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
+                if embed_html:
+                    compressed = gzip.compress(embed_html.encode("utf-8"))
+                    encoded = base64.b64encode(compressed).decode("ascii")
+                    if len(encoded) <= _EMBED_SIZE_CAP:
+                        payload["embed_html_gz"] = encoded
+                    else:
+                        payload["panel_server"] = True
+                else:
+                    # Empty string (Python callbacks detected) or None (embed failed):
+                    # in either case the live-server URL will be CSP-blocked in Claude Desktop.
+                    payload["panel_server"] = True
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."

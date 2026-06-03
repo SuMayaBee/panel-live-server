@@ -542,13 +542,16 @@ class SnippetDatabase:
     @staticmethod
     def _row_to_snippet(row: dict) -> Snippet:
         """Convert a database row to a Snippet."""
+        # Remap legacy method names stored before the rename.
+        _method_aliases = {"panel": "server", "jupyter": "inline"}
+        method = _method_aliases.get(row["method"], row["method"])
         return Snippet(
             id=row["id"],
             app=row["app"],
             name=row["name"] or "",
             description=row["description"] or "",
             readme=row.get("readme", ""),
-            method=row["method"],
+            method=method,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             status=row["status"],

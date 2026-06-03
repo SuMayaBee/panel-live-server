@@ -174,7 +174,7 @@ class TestSnippetDatabase:
         assert "plotly" in snippet.extensions
 
     def test_panel_method_still_enforces_extension_validation(self, temp_db):
-        """Same code must raise ExtensionError for method='panel'."""
+        """Same code must raise ExtensionError for method='server'."""
         from panel_live_server.utils import ExtensionError
 
         with pytest.raises(ExtensionError, match="plotly"):
