@@ -24,42 +24,11 @@ assistants to display and inspect Python outputs in real time.
 
 ## Installation
 
-Install via `uv`:
+Install via uv, pip, or pixi — see the [Installation guide](https://panel-extensions.github.io/panel-live-server/tutorials/installation/) for full instructions including how to find your `pls` path.
 
 ```bash
 uv tool install "panel-live-server[pydata]"
-
-# Find the pls path
-which pls
-# typically: /home/<user>/.local/bin/pls
 ```
-
-Install via `pip`:
-
-```bash
-python -m venv venv
-source venv/bin/activate  # on Linux/macOS
-
-pip install "panel-live-server[pydata]"
-
-# Find the pls path
-which pls
-# typically: /path/to/venv/bin/pls
-```
-
-Install via `pixi`:
-
-```bash
-pixi init
-pixi add python
-pixi add --pypi "panel-live-server[pydata]"
-
-# Find the pls path
-pixi run which pls
-# typically: /path/to/project/.pixi/envs/default/bin/pls
-```
-
-The `[pydata]` extra includes the full visualization stack (hvplot, plotly, altair, polars, etc.).
 
 > **Pin your version** — this project is in its early stages. Pin to a specific version to avoid
 > unexpected changes: `uv tool install "panel-live-server[pydata]==0.1.0a1"`
@@ -102,28 +71,7 @@ You can also use `panel-live-server` but `pls` is shorter and easier to remember
 
 ## Development
 
-See [docs → Contributing](https://panel-extensions.github.io/panel-live-server/tutorials/contributing/) for the full setup guide (fork, install, connect to MCP client, run tests).
-
-Quick reference:
-
-```bash
-# uv
-git clone https://github.com/<your-username>/panel-live-server.git
-cd panel-live-server
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-pre-commit install
-pytest tests/
-```
-
-```bash
-# pixi
-git clone https://github.com/<your-username>/panel-live-server.git
-cd panel-live-server
-pixi install && pixi run postinstall
-pixi run lint-install
-pixi run test
-```
+See the [Contributing guide](https://panel-extensions.github.io/panel-live-server/tutorials/contributing/) for the full setup (fork, install, connect to MCP client, run tests).
 
 ## ❤️ Contributing
 
