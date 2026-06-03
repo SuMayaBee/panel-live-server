@@ -31,16 +31,38 @@ Install it via `uv`:
 uv tool install "panel-live-server[pydata]"
 ```
 
+Find the `pls` path:
+```bash
+which pls
+# typically: /home/<user>/.local/bin/pls
+```
+
 Install it via `pip`:
 
 ```bash
+python -m venv venv
+source venv/bin/activate  # on Linux/macOS
 pip install "panel-live-server[pydata]"
+```
+
+Find the `pls` path:
+```bash
+which pls
+# typically: /path/to/venv/bin/pls
 ```
 
 Install it via `pixi`:
 
 ```bash
-pixi add panel-live-server
+pixi init
+pixi add python
+pixi add --pypi "panel-live-server[pydata]"
+```
+
+Find the `pls` path:
+```bash
+pixi run which pls
+# typically: /path/to/project/.pixi/envs/default/bin/pls
 ```
 
 ## Connect to your AI assistant
