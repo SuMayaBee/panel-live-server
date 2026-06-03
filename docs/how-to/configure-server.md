@@ -76,69 +76,8 @@ pls mcp --transport sse
 The Panel server starts automatically in the background. You do not need to run `pls serve`
 separately.
 
-=== "VS Code"
-
-    Add to `.vscode/mcp.json`:
-
-    ```json
-    {
-      "servers": {
-        "panel-live-server": {
-          "type": "stdio",
-          "command": "pls",
-          "args": ["mcp"]
-        }
-      }
-    }
-    ```
-
-=== "Cursor"
-
-    Add to `~/.cursor/mcp.json`:
-
-    ```json
-    {
-      "mcpServers": {
-        "panel-live-server": {
-          "command": "pls",
-          "args": ["mcp"]
-        }
-      }
-    }
-    ```
-
-=== "Claude Desktop"
-
-    Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
-    `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-    ```json
-    {
-      "mcpServers": {
-        "panel-live-server": {
-          "command": "pls",
-          "args": ["mcp"]
-        }
-      }
-    }
-    ```
-
-=== "Claude Code"
-
-    ```bash
-    claude mcp add panel-live-server -- pls mcp
-    ```
-
-=== "claude.ai"
-
-    claude.ai requires HTTP transport. Start with:
-
-    ```bash
-    pls mcp --transport http --port 8001
-    ```
-
-    Then expose it publicly via Cloudflare tunnel — see the
-    [MCP server tutorial](../tutorials/mcp-server.md) for the full setup.
+For per-client setup instructions (VS Code, Cursor, Claude Desktop, Claude Code, claude.ai) see
+[Installation → Connect to your MCP client](../tutorials/installation.md#connect-to-your-mcp-client).
 
 ### Example: Custom port via environment variable
 
@@ -146,7 +85,7 @@ separately.
 {
   "mcpServers": {
     "panel-live-server": {
-      "command": "pls",
+      "command": "/path/to/pls",
       "args": ["mcp"],
       "env": {
         "PANEL_LIVE_SERVER_PORT": "9999"
