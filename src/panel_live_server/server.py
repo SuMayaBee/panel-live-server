@@ -23,6 +23,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.apps import AppConfig
 from fastmcp.server.apps import ResourceCSP
+from fastmcp.utilities.types import Image
 
 from panel_live_server.client import DisplayClient
 from panel_live_server.config import get_config
@@ -140,6 +141,31 @@ def _externalize_url(url: str) -> str:
     path = parsed.path or ""
     query = f"?{parsed.query}" if parsed.query else ""
     return f"{external_url.rstrip('/')}{path}{query}"
+
+
+async def _ensure_healthy_client(ctx: Context | None) -> DisplayClient:
+    """Return a healthy DisplayClient, restarting the Panel server if needed.
+
+    Raises ``ToolError`` if the server is not running or cannot be recovered.
+    """
+    global _manager, _client
+
+    if not _client:
+        config = get_config()
+        raise ToolError(f"Panel Live Server is not running. Restart the MCP server. Ensure port {config.port} is not already in use.")
+
+    if not _client.is_healthy():
+        if ctx:
+            await ctx.info("Panel Live Server is not healthy, attempting restart...")
+
+        if _manager and _manager.restart():
+            _client.close()
+            _client = DisplayClient(base_url=_manager.get_base_url())
+        else:
+            config = get_config()
+            raise ToolError(f"Panel Live Server is not healthy and failed to restart. Kill any process on port {config.port} and restart the MCP server.")
+
+    return _client
 
 
 def _get_mcp_client_name(ctx: Context | None) -> str:
@@ -619,21 +645,8 @@ async def show(
         if not validation["valid"]:
             _raise_validation_error(validation)
 
-    if not _client:
-        config = get_config()
-        raise ToolError(f"Panel Live Server is not running. Restart the MCP server. Ensure port {config.port} is not already in use.")
-
     # Check health with restart logic
-    if not _client.is_healthy():
-        if ctx:
-            await ctx.info("Panel Live Server is not healthy, attempting restart...")
-
-        if _manager and _manager.restart():
-            _client.close()
-            _client = DisplayClient(base_url=_manager.get_base_url())
-        else:
-            config = get_config()
-            raise ToolError(f"Panel Live Server is not healthy and failed to restart. Kill any process on port {config.port} and restart the MCP server.")
+    await _ensure_healthy_client(ctx)
 
     # Send request to Panel server
     try:
@@ -704,3 +717,108 @@ async def show(
         if ctx:
             await ctx.error(f"Failed to create visualization: {e}")
         raise ToolError(f"Failed to create visualization: {e!s}. Check that the Panel server is running and the code is valid Python.") from e
+
+
+@mcp.tool(name="screenshot")
+async def screenshot(
+    code: str,
+    name: str = "",
+    description: str = "",
+    method: Literal["inline", "server"] = "server",
+    width: int = 1200,
+    height: int = 800,
+    full_page: bool = False,
+    ctx: Context | None = None,
+) -> Image:
+    """Render Python visualization code and return a PNG screenshot of the result.
+
+    Use this to *see* what a visualization actually looks like — its layout,
+    fonts, spacing, and alignment as rendered in a real browser — so you can
+    judge whether it looks right and iterate, the way a human developer does:
+    write code, look at it, tweak, look again.
+
+    This complements `validate` (which checks the code *runs*) by checking how
+    the output *looks*. A typical loop: `validate` → `screenshot` → inspect the
+    image → adjust the code → repeat → `show` the final result to the user.
+
+    WHEN TO USE — this adds latency (a headless browser renders the page), so
+    use it deliberately, not on every call:
+    - The user asks how something looks, or to fix a visual issue
+      ("the fonts look inconsistent", "the legend overlaps the title").
+    - The request is visual or ambiguous and you want to confirm the result
+      before presenting it.
+    Otherwise prefer `show` directly.
+
+    The code is fully validated (static checks + runtime execution) before
+    rendering, exactly like `validate`. The screenshot is returned to you only;
+    it is not persisted. The underlying snippet is created so it also appears in
+    the live feed.
+
+    Parameters
+    ----------
+    code : str
+        Python code to execute and render. Same rules as `show`:
+        for "inline" the last expression is displayed; for "server" call
+        `.servable()` on the objects to display.
+    name : str, optional
+        Short descriptive name shown in the visualization feed.
+    description : str, optional
+        One-sentence description of what the visualization shows.
+    method : {"inline", "server"}, default "server"
+        Execution mode — same semantics as `show`.
+    width : int, default 1200
+        Browser viewport width in pixels.
+    height : int, default 800
+        Browser viewport height in pixels.
+    full_page : bool, default False
+        If ``True``, capture the full scrollable page rather than just the
+        viewport. Useful for tall dashboards.
+
+    Returns
+    -------
+    Image
+        A PNG screenshot of the rendered visualization.
+    """
+    # 1. Validate (static + runtime) — never screenshot code that does not run.
+    validation = _run_validation(code, method)
+    if not validation["valid"]:
+        _raise_validation_error(validation)
+
+    from panel_live_server.utils import validate_code
+
+    runtime_error = await asyncio.to_thread(validate_code, code)
+    if runtime_error:
+        raise ValidationError(f"[runtime] {runtime_error}")
+    _fully_validated.add((code, method))
+
+    # 2. Ensure the Panel server is up (restart if needed).
+    client = await _ensure_healthy_client(ctx)
+
+    # 3. Create the snippet — this is the render target (and shows up in /feed).
+    try:
+        response = client.create_snippet(
+            code=code,
+            name=name,
+            description=description,
+            method=method,
+            validated=True,
+        )
+    except Exception as e:
+        logger.exception(f"Error creating snippet for screenshot: {e}")
+        raise ToolError(f"Failed to create visualization for screenshot: {e!s}.") from e
+
+    if error_message := response.get("error_message", None):
+        raise ToolError(f"Visualization failed at runtime:\n{error_message}\nFix the code and try again.")
+
+    snippet_id = response.get("id", "")
+    if not snippet_id:
+        raise ToolError("Failed to create a snippet to screenshot (no id returned).")
+
+    # 4. Capture the rendered page as a PNG.
+    png, error = await asyncio.to_thread(client.get_screenshot, snippet_id, width, height, full_page)
+    if error:
+        raise ToolError(f"Failed to capture screenshot: {error}")
+    if not png:
+        raise ToolError("Screenshot capture returned no image data.")
+
+    return Image(data=png, format="png")

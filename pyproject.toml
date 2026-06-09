@@ -53,6 +53,9 @@ Homepage = "https://github.com/panel-extensions/panel-live-server"
 Source = "https://github.com/panel-extensions/panel-live-server"
 
 [project.optional-dependencies]
+screenshot = [
+    "playwright",
+]
 dev = [
     "zensical",
     "mkdocstrings[python]",

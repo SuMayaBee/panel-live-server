@@ -60,9 +60,16 @@ mkdocstrings-python = "*"
 docs = "zensical serve"
 docs-build = "zensical build"
 
+[feature.screenshot.pypi-dependencies]
+playwright = "*"
+
+[feature.screenshot.tasks]
+screenshot-install = "playwright install chromium"
+
 [environments]
 default = ["test"]
 py312 = ["py312", "test"]
 docs = ["docs"]
 build = ["build"]
 lint = { features = ["lint"], no-default-feature = true }
+screenshot = ["screenshot", "test"]
