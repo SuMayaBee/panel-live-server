@@ -9,11 +9,13 @@ Playwright is a **required** dependency (included in the base install). Import /
 launch failures are surfaced as :class:`PlaywrightUnavailableError` with an
 install hint so callers can degrade gracefully instead of crashing.
 
-By default the bundled Chromium (installed via ``playwright install chromium``)
-is used — this is the most reliable choice across operating systems and headless
-container environments (JupyterHub, Codespaces, dev containers) that often have
-no system browser. To reuse an already-installed browser and skip the download,
-set one of:
+Browser selection is automatic — no manual install step required:
+
+1. If system **Chrome** or **Edge** is found, it is used immediately (no download).
+2. Otherwise the bundled **Chromium** is tried; if absent it is downloaded (~150 MB).
+3. If that fails, **Firefox** then **WebKit** are tried (same: use if present, download if not).
+
+To pin a specific browser instead of auto-detecting, set one of:
 
 - ``PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL`` (e.g. ``chrome``, ``msedge``)
 - ``PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_PATH``    (path to a Chromium-family binary)
@@ -21,21 +23,30 @@ set one of:
 
 import asyncio
 import logging
+import os
+import sys
 
 logger = logging.getLogger(__name__)
 
 
 class PlaywrightUnavailableError(RuntimeError):
-    """Raised when Playwright or its Chromium browser is not installed/launchable."""
+    """Raised when Playwright or its browser is not installed/launchable."""
 
 
 _INSTALL_HINT = (
-    "Screenshot support requires the Chromium browser binary. Install it with:\n"
+    "Could not find or install any browser. Try installing one manually:\n"
     "    playwright install chromium\n"
-    "Alternatively, reuse an installed browser by setting "
-    "PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL=chrome (or msedge), or "
-    "PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_PATH=/path/to/chrome."
+    "Or reuse an existing browser by setting:\n"
+    "    PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL=chrome  (or msedge)\n"
+    "    PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_PATH=/path/to/browser"
 )
+
+# System Chrome/Edge can be used via Playwright's channel API — no download needed.
+_SYSTEM_CHANNELS = ("chrome", "msedge")
+
+# Playwright-bundled engines tried in order when no system browser is found.
+# Each is installed on demand if not already present.
+_FALLBACK_ENGINES = ("chromium", "firefox", "webkit")
 
 # Selectors that indicate Panel/Bokeh content has been mounted. Best-effort —
 # text/markdown-only pages may match none of these, so a miss is not fatal.
@@ -52,23 +63,83 @@ def is_available() -> bool:
 
 
 class _BrowserManager:
-    """Lazily launches and reuses a single shared headless browser."""
+    """Lazily launches and reuses a single shared headless browser.
+
+    Browser selection order (first success wins):
+
+    1. Env-var override (``PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL`` /
+       ``..._BROWSER_PATH``) — user picks explicitly, no auto-detection.
+    2. System Chrome → system Edge (channel API, zero download).
+    3. Bundled Chromium → Firefox → WebKit (each installed on demand if absent).
+    """
 
     def __init__(self) -> None:
         self._playwright = None
         self._browser = None
         self._lock = asyncio.Lock()
 
-    def _launch_kwargs(self) -> dict:
-        """Build ``chromium.launch`` kwargs, honoring optional browser overrides."""
-        import os
+    def _has_override(self) -> bool:
+        """Return True when the user set an explicit browser env var."""
+        return bool(
+            os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL", "").strip()
+            or os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_PATH", "").strip()
+        )
 
+    def _override_kwargs(self) -> dict:
+        """Build ``chromium.launch`` kwargs from env var overrides."""
         kwargs: dict = {"headless": True}
         if channel := os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL", "").strip():
             kwargs["channel"] = channel
         if executable := os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_PATH", "").strip():
             kwargs["executable_path"] = executable
         return kwargs
+
+    async def _try_system_browser(self, pw):
+        """Try system Chrome then Edge via Playwright channel API (no download)."""
+        for channel in _SYSTEM_CHANNELS:
+            try:
+                browser = await pw.chromium.launch(headless=True, channel=channel)
+                logger.info("Using system browser: %s", channel)
+                return browser
+            except Exception:
+                continue
+        return None
+
+    async def _install_engine(self, engine_name: str) -> bool:
+        """Run ``playwright install <engine>`` and return True on success."""
+        logger.info("No browser found — downloading %s (one-time). This may take a minute...", engine_name)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "playwright", "install", engine_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0:
+                logger.info("%s installed successfully.", engine_name)
+                return True
+            logger.warning("playwright install %s failed:\n%s", engine_name, stdout.decode())
+        except Exception as exc:
+            logger.warning("Could not install %s: %s", engine_name, exc)
+        return False
+
+    async def _launch_fallback(self, pw):
+        """Try each bundled engine; install it first if the binary is absent."""
+        for engine_name in _FALLBACK_ENGINES:
+            engine = getattr(pw, engine_name)
+            try:
+                browser = await engine.launch(headless=True)
+                logger.info("Using bundled %s.", engine_name)
+                return browser
+            except Exception:
+                pass
+            if await self._install_engine(engine_name):
+                try:
+                    browser = await engine.launch(headless=True)
+                    return browser
+                except Exception:
+                    pass
+        return None
 
     async def _ensure_browser(self):
         """Return a connected browser, launching one on first use."""
@@ -87,10 +158,15 @@ class _BrowserManager:
 
             self._playwright = await async_playwright().start()
             try:
-                self._browser = await self._playwright.chromium.launch(**self._launch_kwargs())
+                if self._has_override():
+                    self._browser = await self._playwright.chromium.launch(**self._override_kwargs())
+                else:
+                    self._browser = await self._try_system_browser(self._playwright)
+                    if self._browser is None:
+                        self._browser = await self._launch_fallback(self._playwright)
+                    if self._browser is None:
+                        raise RuntimeError("No browser could be launched or installed.")
             except Exception as e:
-                # Most commonly the chromium binary was never installed, or the
-                # requested channel/executable does not exist.
                 await self._stop_playwright()
                 raise PlaywrightUnavailableError(f"Failed to launch a headless browser: {e}\n{_INSTALL_HINT}") from e
 
