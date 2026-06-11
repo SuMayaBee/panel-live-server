@@ -5,9 +5,9 @@ MCP ``screenshot`` tool can hand an LLM a picture of the *rendered* output —
 the actual layout, fonts, and margins as a user would see them, not just the
 source code.
 
-Playwright is an **optional** dependency. Import / launch failures are surfaced
-as :class:`PlaywrightUnavailableError` with an install hint so callers can
-degrade gracefully instead of crashing.
+Playwright is a **required** dependency (included in the base install). Import /
+launch failures are surfaced as :class:`PlaywrightUnavailableError` with an
+install hint so callers can degrade gracefully instead of crashing.
 
 By default the bundled Chromium (installed via ``playwright install chromium``)
 is used — this is the most reliable choice across operating systems and headless
@@ -30,8 +30,7 @@ class PlaywrightUnavailableError(RuntimeError):
 
 
 _INSTALL_HINT = (
-    "Screenshot support requires Playwright. Install it with:\n"
-    '    pip install "panel-live-server[screenshot]"\n'
+    "Screenshot support requires the Chromium browser binary. Install it with:\n"
     "    playwright install chromium\n"
     "Alternatively, reuse an installed browser by setting "
     "PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL=chrome (or msedge), or "
