@@ -5,6 +5,7 @@ platforms = ["osx-arm64", "osx-64", "linux-64", "win-64"]
 
 [tasks]
 postinstall = "pip install --no-build-isolation --no-deps --disable-pip-version-check -e ."
+screenshot-install = "playwright install chromium"
 
 [dependencies]
 python = ">=3.12"
@@ -24,6 +25,7 @@ setuptools-scm = "*"
 [pypi-dependencies]
 fastmcp = ">=3.0"
 panel-material-ui = "*"
+playwright = "*"
 
 [feature.test.dependencies]
 pytest = ">=6"
@@ -60,16 +62,9 @@ mkdocstrings-python = "*"
 docs = "zensical serve"
 docs-build = "zensical build"
 
-[feature.screenshot.pypi-dependencies]
-playwright = "*"
-
-[feature.screenshot.tasks]
-screenshot-install = "playwright install chromium"
-
 [environments]
 default = ["test"]
 py312 = ["py312", "test"]
 docs = ["docs"]
 build = ["build"]
 lint = { features = ["lint"], no-default-feature = true }
-screenshot = ["screenshot", "test"]
