@@ -122,6 +122,28 @@ def _raise_validation_error(validation: dict) -> None:
         raise ValidationError(message)
 
 
+async def _ensure_validated(code: str, method: str) -> None:
+    """Run static + runtime validation unless already cached in ``_fully_validated``.
+
+    Raises ``SecurityError`` or ``ValidationError`` on failure. No-op if the
+    ``(code, method)`` pair was already validated this session.
+    """
+    if (code, method) in _fully_validated:
+        return
+
+    validation = _run_validation(code, method)
+    if not validation["valid"]:
+        _raise_validation_error(validation)
+
+    from panel_live_server.utils import validate_code
+
+    runtime_error = await asyncio.to_thread(validate_code, code)
+    if runtime_error:
+        raise ValidationError(f"[runtime] {runtime_error}")
+
+    _fully_validated.add((code, method))
+
+
 def _externalize_url(url: str) -> str:
     """Convert local URLs to externally reachable URLs using config.external_url."""
     if not url:
@@ -624,16 +646,7 @@ async def show(
     zoom = min(_valid_zooms, key=lambda z: abs(z - zoom))
 
     if quick:
-        # Quick mode: run full validation (static + runtime) inline.
-        validation = _run_validation(code, method)
-        if not validation["valid"]:
-            _raise_validation_error(validation)
-
-        from panel_live_server.utils import validate_code
-
-        runtime_error = await asyncio.to_thread(validate_code, code)
-        if runtime_error:
-            raise ValidationError(f"[runtime] {runtime_error}")
+        await _ensure_validated(code, method)
     else:
         # Standard mode: validate() must have been called first.
         key = (code, method)
@@ -780,16 +793,7 @@ async def screenshot(
         Text feedback describing whether the visualization rendered correctly.
     """
     # 1. Validate (static + runtime) — never render code that does not run.
-    validation = _run_validation(code, method)
-    if not validation["valid"]:
-        _raise_validation_error(validation)
-
-    from panel_live_server.utils import validate_code
-
-    runtime_error = await asyncio.to_thread(validate_code, code)
-    if runtime_error:
-        raise ValidationError(f"[runtime] {runtime_error}")
-    _fully_validated.add((code, method))
+    await _ensure_validated(code, method)
 
     # 2. Ensure the Panel server is up (restart if needed).
     client = await _ensure_healthy_client(ctx)
