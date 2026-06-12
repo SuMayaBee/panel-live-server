@@ -24,7 +24,6 @@ To pin a specific browser instead of auto-detecting, set one of:
 import asyncio
 import logging
 import os
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,6 @@ _INSTALL_HINT = (
 _SYSTEM_CHANNELS = ("chrome", "msedge")
 
 # Playwright-bundled engines tried in order when no system browser is found.
-# Each is installed on demand if not already present.
 _FALLBACK_ENGINES = ("chromium", "firefox", "webkit")
 
 # Selectors that indicate Panel/Bokeh content has been mounted. Best-effort —
@@ -105,40 +103,15 @@ class _BrowserManager:
                 continue
         return None
 
-    async def _install_engine(self, engine_name: str) -> bool:
-        """Run ``playwright install <engine>`` and return True on success."""
-        logger.info("No browser found — downloading %s (one-time). This may take a minute...", engine_name)
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "playwright", "install", engine_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            stdout, _ = await proc.communicate()
-            if proc.returncode == 0:
-                logger.info("%s installed successfully.", engine_name)
-                return True
-            logger.warning("playwright install %s failed:\n%s", engine_name, stdout.decode())
-        except Exception as exc:
-            logger.warning("Could not install %s: %s", engine_name, exc)
-        return False
-
-    async def _launch_fallback(self, pw):
-        """Try each bundled engine; install it first if the binary is absent."""
+    async def _try_bundled_engines(self, pw):
+        """Try each bundled engine if already installed (no download)."""
         for engine_name in _FALLBACK_ENGINES:
-            engine = getattr(pw, engine_name)
             try:
-                browser = await engine.launch(headless=True)
+                browser = await getattr(pw, engine_name).launch(headless=True)
                 logger.info("Using bundled %s.", engine_name)
                 return browser
             except Exception:
-                pass
-            if await self._install_engine(engine_name):
-                try:
-                    browser = await engine.launch(headless=True)
-                    return browser
-                except Exception:
-                    pass
+                continue
         return None
 
     async def _ensure_browser(self):
@@ -163,9 +136,9 @@ class _BrowserManager:
                 else:
                     self._browser = await self._try_system_browser(self._playwright)
                     if self._browser is None:
-                        self._browser = await self._launch_fallback(self._playwright)
+                        self._browser = await self._try_bundled_engines(self._playwright)
                     if self._browser is None:
-                        raise RuntimeError("No browser could be launched or installed.")
+                        raise RuntimeError("No browser found. Run: playwright install chromium")
             except Exception as e:
                 await self._stop_playwright()
                 raise PlaywrightUnavailableError(f"Failed to launch a headless browser: {e}\n{_INSTALL_HINT}") from e
