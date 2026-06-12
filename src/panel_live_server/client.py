@@ -122,30 +122,20 @@ class DisplayClient:
             logger.warning("Embed render request error for snippet %s: %s", snippet_id, e)
             return None
 
-    def get_screenshot(
+    def get_visual_feedback(
         self,
         snippet_id: str,
         width: int | None = None,
         height: int | None = None,
         full_page: bool = False,
-    ) -> tuple[bytes | None, str | None]:
-        """Fetch a PNG screenshot of a snippet's rendered ``/view`` page.
-
-        Parameters
-        ----------
-        snippet_id : str
-            Id of the snippet to screenshot.
-        width, height : int, optional
-            Viewport size in px. Omitted values fall back to the server config.
-        full_page : bool, optional
-            Capture the full scrollable page rather than just the viewport.
+    ) -> tuple[str | None, str | None]:
+        """Render a snippet in a headless browser and return text feedback.
 
         Returns
         -------
-        tuple[bytes | None, str | None]
-            ``(png_bytes, None)`` on success, or ``(None, error_message)`` on
-            failure (e.g. Playwright not installed, render error), so the caller
-            can surface a clear message to the LLM.
+        tuple[str | None, str | None]
+            ``(feedback_text, None)`` on success, or ``(None, error_message)``
+            on failure.
         """
         params: dict[str, str | int] = {"id": snippet_id, "full_page": str(full_page).lower()}
         if width:
@@ -153,8 +143,6 @@ class DisplayClient:
         if height:
             params["height"] = height
 
-        # Screenshots can take longer than a normal request (browser launch +
-        # async render + settle), so allow a more generous timeout.
         try:
             response = self.session.get(
                 f"{self.base_url}/api/screenshot",
@@ -162,19 +150,29 @@ class DisplayClient:
                 timeout=max(self.timeout, 60),
             )
         except requests.RequestException as e:
-            logger.warning("Screenshot request error for snippet %s: %s", snippet_id, e)
-            return None, f"Screenshot request failed: {e}"
+            logger.warning("Visual check request error for snippet %s: %s", snippet_id, e)
+            return None, f"Visual check request failed: {e}"
 
-        if response.status_code == 200 and "image/png" in response.headers.get("Content-Type", ""):
-            return response.content, None
+        if response.status_code == 200:
+            body = response.json()
+            content_found = body.get("content_found", False)
+            issues = body.get("issues", [])
+            w, h = body.get("width", width), body.get("height", height)
+            if content_found and not issues:
+                return f"Visual check passed: Panel content rendered successfully ({w}x{h}px viewport).", None
+            parts = [f"Visual check warning ({w}x{h}px viewport):"]
+            if not content_found:
+                parts.append("- No Panel content detected — visualization may not have rendered correctly.")
+            for issue in issues:
+                parts.append(f"- {issue}")
+            return "\n".join(parts), None
 
-        # Error path — extract a useful message from the JSON body when present.
         try:
             body = response.json()
             message = body.get("message") or body.get("error") or response.text
         except ValueError:
             message = response.text or f"HTTP {response.status_code}"
-        logger.warning("Screenshot failed (HTTP %s) for snippet %s: %s", response.status_code, snippet_id, message)
+        logger.warning("Visual check failed (HTTP %s) for snippet %s: %s", response.status_code, snippet_id, message)
         return None, message
 
     def close(self) -> None:

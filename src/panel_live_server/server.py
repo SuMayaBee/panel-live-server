@@ -23,7 +23,6 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.apps import AppConfig
 from fastmcp.server.apps import ResourceCSP
-from fastmcp.utilities.types import Image
 
 from panel_live_server.client import DisplayClient
 from panel_live_server.config import get_config
@@ -729,30 +728,31 @@ async def screenshot(
     height: int = 800,
     full_page: bool = False,
     ctx: Context | None = None,
-) -> Image:
-    """Render Python visualization code and return a PNG screenshot of the result.
+) -> str:
+    """Visual validation tool — renders the code and returns text feedback to the LLM.
 
-    Use this to *see* what a visualization actually looks like — its layout,
-    fonts, spacing, and alignment as rendered in a real browser — so you can
-    judge whether it looks right and iterate, the way a human developer does:
-    write code, look at it, tweak, look again.
+    Think of this as the visual equivalent of `validate`:
+    - `validate`   → confirms the code runs correctly (no errors)
+    - `screenshot` → confirms the output looks correct (layout, fonts, spacing)
+    - `show`       → the ONLY tool that displays the result to the user
 
-    This complements `validate` (which checks the code *runs*) by checking how
-    the output *looks*. A typical loop: `validate` → `screenshot` → inspect the
-    image → adjust the code → repeat → `show` the final result to the user.
+    The screenshot appears in the chat as a static PNG (visible to both you and
+    the user), but it is NOT a substitute for `show`. `show` renders a fully
+    interactive Panel app in the user's browser — with zoom, pan, and widgets.
+    Always end with `show` so the user gets the interactive experience.
 
-    WHEN TO USE — this adds latency (a headless browser renders the page), so
-    use it deliberately, not on every call:
-    - The user asks how something looks, or to fix a visual issue
-      ("the fonts look inconsistent", "the legend overlaps the title").
-    - The request is visual or ambiguous and you want to confirm the result
-      before presenting it.
-    Otherwise prefer `show` directly.
+    WHEN TO USE:
+    - The code is complex (multi-panel layouts, dashboards, custom styling) and
+      you want to verify it looks right before calling `show`.
+    - The user reports a visual problem ("legend overlaps", "fonts look off")
+      and you need to see it yourself to fix it.
+    - The user explicitly asks you to check or verify the appearance.
+
+    Typical loop: `validate` → `screenshot` (inspect) → adjust if needed → `show` to user.
 
     The code is fully validated (static checks + runtime execution) before
-    rendering, exactly like `validate`. The screenshot is returned to you only;
-    it is not persisted. The underlying snippet is created so it also appears in
-    the live feed.
+    rendering. The screenshot is returned to you only; it is not persisted.
+    The underlying snippet is created so it also appears in the live feed.
 
     Parameters
     ----------
@@ -776,10 +776,10 @@ async def screenshot(
 
     Returns
     -------
-    Image
-        A PNG screenshot of the rendered visualization.
+    str
+        Text feedback describing whether the visualization rendered correctly.
     """
-    # 1. Validate (static + runtime) — never screenshot code that does not run.
+    # 1. Validate (static + runtime) — never render code that does not run.
     validation = _run_validation(code, method)
     if not validation["valid"]:
         _raise_validation_error(validation)
@@ -812,13 +812,11 @@ async def screenshot(
 
     snippet_id = response.get("id", "")
     if not snippet_id:
-        raise ToolError("Failed to create a snippet to screenshot (no id returned).")
+        raise ToolError("Failed to create a snippet for visual check (no id returned).")
 
-    # 4. Capture the rendered page as a PNG.
-    png, error = await asyncio.to_thread(client.get_screenshot, snippet_id, width, height, full_page)
+    # 4. Render the page in a headless browser and return text feedback.
+    feedback, error = await asyncio.to_thread(client.get_visual_feedback, snippet_id, width, height, full_page)
     if error:
-        raise ToolError(f"Failed to capture screenshot: {error}")
-    if not png:
-        raise ToolError("Screenshot capture returned no image data.")
+        raise ToolError(f"Visual check failed: {error}")
 
-    return Image(data=png, format="png")
+    return feedback
