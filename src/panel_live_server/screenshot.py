@@ -154,15 +154,8 @@ class _BrowserManager:
         full_page: bool,
         settle_ms: int,
         timeout_ms: int,
-    ) -> tuple[bool, list[str]]:
-        """Load ``url`` in a headless browser and return visual feedback as text.
-
-        Returns
-        -------
-        tuple[bool, list[str]]
-            ``(content_found, issues)`` — True if Panel content was detected,
-            plus a list of any warning strings (empty means all clear).
-        """
+    ) -> bytes:
+        """Load ``url`` in a fresh browser context and return a PNG screenshot."""
         browser = await self._ensure_browser()
         context = await browser.new_context(viewport={"width": width, "height": height})
         try:
@@ -171,28 +164,16 @@ class _BrowserManager:
             # a live Bokeh websocket open, so the network never goes idle.
             await page.goto(url, wait_until="load", timeout=timeout_ms)
 
-            content_found = True
+            # Best-effort wait for Panel/Bokeh content to mount.
             try:
                 await page.wait_for_selector(_CONTENT_SELECTOR, timeout=min(5000, timeout_ms))
             except Exception:
-                content_found = False
-                logger.debug("No known content selector matched for %s.", url)
+                logger.debug("No known content selector matched for %s; capturing anyway.", url)
 
             # Bokeh draws asynchronously after mount; give the canvas time to settle.
             await page.wait_for_timeout(settle_ms)
 
-            # Check for visible error overlays or exception messages in the DOM.
-            issues: list[str] = []
-            error_text = await page.evaluate(
-                """() => {
-                    const el = document.querySelector('.error, .exception, [class*="error"], [class*="traceback"]');
-                    return el ? el.innerText.trim().slice(0, 300) : null;
-                }"""
-            )
-            if error_text:
-                issues.append(f"Error overlay detected: {error_text}")
-
-            return content_found, issues
+            return await page.screenshot(type="png", full_page=full_page)
         finally:
             await context.close()
 
@@ -218,7 +199,7 @@ class _BrowserManager:
 _manager = _BrowserManager()
 
 
-async def capture_feedback(
+async def capture_png(
     url: str,
     *,
     width: int = 1200,
@@ -226,12 +207,12 @@ async def capture_feedback(
     full_page: bool = False,
     settle_ms: int = 1200,
     timeout_ms: int = 30000,
-) -> tuple[bool, list[str]]:
-    """Render ``url`` in a headless browser and return text feedback.
+) -> bytes:
+    """Capture a PNG screenshot of ``url`` using a shared headless browser.
 
     Returns
     -------
-    tuple[bool, list[str]]
+    bytes
         ``(content_found, issues)`` — whether Panel content was detected and
         any warning/error strings found on the page.
 

@@ -242,9 +242,9 @@ class ScreenshotEndpoint(RequestHandler):
     """
 
     async def get(self):
-        """Render the snippet identified by ``?id=`` and return visual feedback as JSON."""
+        """Capture and return the snippet identified by ``?id=`` as a PNG."""
         from panel_live_server.screenshot import PlaywrightUnavailableError
-        from panel_live_server.screenshot import capture_feedback
+        from panel_live_server.screenshot import capture_png
 
         snippet_id = self.get_argument("id", "")
         if not snippet_id:
@@ -275,7 +275,7 @@ class ScreenshotEndpoint(RequestHandler):
         view_url = f"http://{_local_host(config.host)}:{config.port}/view?id={snippet_id}"
 
         try:
-            content_found, issues = await capture_feedback(
+            png = await capture_png(
                 view_url,
                 width=width,
                 height=height,
@@ -289,15 +289,15 @@ class ScreenshotEndpoint(RequestHandler):
             self.write({"error": "PlaywrightUnavailable", "message": str(e)})
             return
         except Exception as e:
-            logger.exception(f"Error during visual check for snippet {snippet_id}")
+            logger.exception(f"Error capturing screenshot for snippet {snippet_id}")
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write({"error": str(e), "traceback": traceback.format_exc()})
             return
 
         self.set_status(200)
-        self.set_header("Content-Type", "application/json")
-        self.write({"content_found": content_found, "issues": issues, "width": width, "height": height})
+        self.set_header("Content-Type", "image/png")
+        self.write(png)
 
 
 class HealthEndpoint(RequestHandler):

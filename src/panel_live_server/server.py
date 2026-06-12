@@ -23,6 +23,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.apps import AppConfig
 from fastmcp.server.apps import ResourceCSP
+from fastmcp.utilities.types import Image
 
 from panel_live_server.client import DisplayClient
 from panel_live_server.config import get_config
@@ -687,6 +688,7 @@ async def show(
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
 
         snippet_id = response.get("id", "")
+        payload["id"] = snippet_id
 
         if is_claude:
             # Embed as srcdoc to bypass Claude Desktop's frame-src CSP.
@@ -708,6 +710,17 @@ async def show(
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
+        payload["hint"] = (
+            "Follow-up handling for this visualization:\n"
+            f"- If the user only ASKS for information about it (where something peaks, "
+            "which element is largest, colors, positions, etc.) without wanting any "
+            f"change, call `screenshot(snippet_id=\"{snippet_id}\")` to SEE the rendered "
+            "image and answer from it. Do NOT recompute from the code or re-run the data "
+            "— the rendered plot can differ from the raw data (row order, axis inversion, "
+            "sorting, binning).\n"
+            "- If the user wants to MODIFY the visualization (change colors, add a "
+            "series, adjust layout, etc.), write the updated code and call `show` again."
+        )
         return json.dumps(payload)
 
     except SecurityError:
@@ -733,7 +746,8 @@ async def show(
 
 @mcp.tool(name="screenshot")
 async def screenshot(
-    code: str,
+    snippet_id: str = "",
+    code: str = "",
     name: str = "",
     description: str = "",
     method: Literal["inline", "server"] = "server",
@@ -741,44 +755,84 @@ async def screenshot(
     height: int = 800,
     full_page: bool = False,
     ctx: Context | None = None,
-) -> str:
-    """Visual validation tool — renders the code and returns text feedback to the LLM.
+) -> Image:
+    """See the ACTUAL rendered visualization — returns a PNG image of it to you (the LLM).
 
     Think of this as the visual equivalent of `validate`:
     - `validate`   → confirms the code runs correctly (no errors)
-    - `screenshot` → confirms the output looks correct (layout, fonts, spacing)
+    - `screenshot` → lets you SEE the rendered output (layout, fonts, spacing, values)
     - `show`       → the ONLY tool that displays the result to the user
 
-    The screenshot appears in the chat as a static PNG (visible to both you and
-    the user), but it is NOT a substitute for `show`. `show` renders a fully
-    interactive Panel app in the user's browser — with zoom, pan, and widgets.
-    Always end with `show` so the user gets the interactive experience.
+    The PNG is returned to you (the LLM) so you can inspect it. It is NOT a
+    substitute for `show` — always call `show` so the user gets the interactive
+    visualization in their browser.
+
+    ════════════════════════════════════════════════════════════════════════
+    PREFERRED USAGE — pass `snippet_id` of a visualization `show` already made:
+    ════════════════════════════════════════════════════════════════════════
+    If you (or the user) already called `show`, it returned an `id`. Pass that as
+    `snippet_id` here and this tool just screenshots that existing page — no code,
+    no re-validation, no duplicate in the feed. This is the common case for
+    answering a follow-up question about a visualization already on screen.
+
+    Only pass `code` (without `snippet_id`) for a STANDALONE check when nothing has
+    been shown yet — e.g. you want to inspect complex code before calling `show`.
+    Providing `code` creates a new snippet (validates + renders it).
+
+    ════════════════════════════════════════════════════════════════════════
+    CRITICAL RULE — answering questions ABOUT a visualization's appearance:
+    ════════════════════════════════════════════════════════════════════════
+    When the user asks where something is, which element is biggest/smallest,
+    what color/position/shape something has, or anything about how the chart
+    LOOKS, you MUST call this tool and answer from the returned image.
+
+    You MUST NOT answer such questions by reading the code, recomputing from the
+    raw data, or re-running the snippet in a Python tool. THAT IS CHEATING AND IS
+    USUALLY WRONG, because the rendered plot is NOT the same as the raw data:
+      - heatmaps flip/reverse the row order (Row 0 often renders at the BOTTOM)
+      - axes get inverted, categories get sorted, histograms bin/group values
+      - color mapping, stacking, and layout change what is visually "highest"
+    The raw-data answer and the on-screen answer frequently DISAGREE. The image
+    is the only ground truth for a question about appearance — so look at it.
+
+    Do not add `np.random.seed(...)` or otherwise make data deterministic just so
+    you can recompute it; render it and read the answer off the actual picture.
 
     WHEN TO USE:
+    - The user asks a specific question about the rendered output that can only
+      be answered by seeing it (random/dynamic data, or visual position). Examples:
+        · wave/line chart  → "where does it peak?", "where is the trough?"
+        · bar chart        → "which bar is the tallest?", "which category leads?"
+        · scatter plot     → "where are the outliers?", "how spread out are the points?"
+        · heatmap          → "which cell has the highest value?"
+        · pie/donut chart  → "which slice is the largest?"
+        · histogram        → "where is the distribution centered?"
+        · any chart        → "what color is X?", "what does the legend say?"
     - The code is complex (multi-panel layouts, dashboards, custom styling) and
       you want to verify it looks right before calling `show`.
     - The user reports a visual problem ("legend overlaps", "fonts look off")
       and you need to see it yourself to fix it.
     - The user explicitly asks you to check or verify the appearance.
 
-    Typical loop: `validate` → `screenshot` (inspect) → adjust if needed → `show` to user.
-
-    The code is fully validated (static checks + runtime execution) before
-    rendering. The screenshot is returned to you only; it is not persisted.
-    The underlying snippet is created so it also appears in the live feed.
+    Typical loop: `validate` → `show` (returns id) → `screenshot(snippet_id=id)` to inspect.
 
     Parameters
     ----------
-    code : str
-        Python code to execute and render. Same rules as `show`:
+    snippet_id : str, optional
+        Id of an existing snippet (as returned by `show`). When given, that page
+        is screenshot directly — no code, no re-validation, no duplicate snippet.
+        Preferred over `code` whenever a visualization already exists.
+    code : str, optional
+        Python code to render — only for standalone checks when nothing has been
+        shown yet. Ignored if `snippet_id` is given. Same rules as `show`:
         for "inline" the last expression is displayed; for "server" call
         `.servable()` on the objects to display.
     name : str, optional
-        Short descriptive name shown in the visualization feed.
+        Short descriptive name shown in the feed (only used with `code`).
     description : str, optional
-        One-sentence description of what the visualization shows.
+        One-sentence description (only used with `code`).
     method : {"inline", "server"}, default "server"
-        Execution mode — same semantics as `show`.
+        Execution mode — same semantics as `show` (only used with `code`).
     width : int, default 1200
         Browser viewport width in pixels.
     height : int, default 800
@@ -789,38 +843,43 @@ async def screenshot(
 
     Returns
     -------
-    str
-        Text feedback describing whether the visualization rendered correctly.
+    Image
+        PNG screenshot of the rendered visualization.
     """
-    # 1. Validate (static + runtime) — never render code that does not run.
-    await _ensure_validated(code, method)
+    if not snippet_id and not code:
+        raise ToolError("Provide either snippet_id (preferred, for an existing visualization) or code (for a standalone check).")
 
-    # 2. Ensure the Panel server is up (restart if needed).
     client = await _ensure_healthy_client(ctx)
 
-    # 3. Create the snippet — this is the render target (and shows up in /feed).
-    try:
-        response = client.create_snippet(
-            code=code,
-            name=name,
-            description=description,
-            method=method,
-            validated=True,
-        )
-    except Exception as e:
-        logger.exception(f"Error creating snippet for screenshot: {e}")
-        raise ToolError(f"Failed to create visualization for screenshot: {e!s}.") from e
-
-    if error_message := response.get("error_message", None):
-        raise ToolError(f"Visualization failed at runtime:\n{error_message}\nFix the code and try again.")
-
-    snippet_id = response.get("id", "")
+    # Fast path: screenshot an existing snippet that `show` already created
+    # (no validation, no new snippet). The endpoint 404s if the id is unknown.
     if not snippet_id:
-        raise ToolError("Failed to create a snippet for visual check (no id returned).")
+        # Standalone path: validate + create a snippet to render.
+        await _ensure_validated(code, method)
+        try:
+            response = client.create_snippet(
+                code=code,
+                name=name,
+                description=description,
+                method=method,
+                validated=True,
+            )
+        except Exception as e:
+            logger.exception(f"Error creating snippet for screenshot: {e}")
+            raise ToolError(f"Failed to create visualization for screenshot: {e!s}.") from e
 
-    # 4. Render the page in a headless browser and return text feedback.
-    feedback, error = await asyncio.to_thread(client.get_visual_feedback, snippet_id, width, height, full_page)
+        if error_message := response.get("error_message", None):
+            raise ToolError(f"Visualization failed at runtime:\n{error_message}\nFix the code and try again.")
+
+        snippet_id = response.get("id", "")
+        if not snippet_id:
+            raise ToolError("Failed to create a snippet for visual check (no id returned).")
+
+    # 4. Capture the rendered page as a PNG.
+    png, error = await asyncio.to_thread(client.get_screenshot, snippet_id, width, height, full_page)
     if error:
-        raise ToolError(f"Visual check failed: {error}")
+        raise ToolError(f"Screenshot failed: {error}")
+    if not png:
+        raise ToolError("Screenshot capture returned no image data.")
 
-    return feedback
+    return Image(data=png, format="png")

@@ -122,20 +122,19 @@ class DisplayClient:
             logger.warning("Embed render request error for snippet %s: %s", snippet_id, e)
             return None
 
-    def get_visual_feedback(
+    def get_screenshot(
         self,
         snippet_id: str,
         width: int | None = None,
         height: int | None = None,
         full_page: bool = False,
-    ) -> tuple[str | None, str | None]:
-        """Render a snippet in a headless browser and return text feedback.
+    ) -> tuple[bytes | None, str | None]:
+        """Fetch a PNG screenshot of a snippet's rendered ``/view`` page.
 
         Returns
         -------
-        tuple[str | None, str | None]
-            ``(feedback_text, None)`` on success, or ``(None, error_message)``
-            on failure.
+        tuple[bytes | None, str | None]
+            ``(png_bytes, None)`` on success, or ``(None, error_message)`` on failure.
         """
         params: dict[str, str | int] = {"id": snippet_id, "full_page": str(full_page).lower()}
         if width:
@@ -150,29 +149,18 @@ class DisplayClient:
                 timeout=max(self.timeout, 60),
             )
         except requests.RequestException as e:
-            logger.warning("Visual check request error for snippet %s: %s", snippet_id, e)
-            return None, f"Visual check request failed: {e}"
+            logger.warning("Screenshot request error for snippet %s: %s", snippet_id, e)
+            return None, f"Screenshot request failed: {e}"
 
-        if response.status_code == 200:
-            body = response.json()
-            content_found = body.get("content_found", False)
-            issues = body.get("issues", [])
-            w, h = body.get("width", width), body.get("height", height)
-            if content_found and not issues:
-                return f"Visual check passed: Panel content rendered successfully ({w}x{h}px viewport).", None
-            parts = [f"Visual check warning ({w}x{h}px viewport):"]
-            if not content_found:
-                parts.append("- No Panel content detected — visualization may not have rendered correctly.")
-            for issue in issues:
-                parts.append(f"- {issue}")
-            return "\n".join(parts), None
+        if response.status_code == 200 and "image/png" in response.headers.get("Content-Type", ""):
+            return response.content, None
 
         try:
             body = response.json()
             message = body.get("message") or body.get("error") or response.text
         except ValueError:
             message = response.text or f"HTTP {response.status_code}"
-        logger.warning("Visual check failed (HTTP %s) for snippet %s: %s", response.status_code, snippet_id, message)
+        logger.warning("Screenshot failed (HTTP %s) for snippet %s: %s", response.status_code, snippet_id, message)
         return None, message
 
     def close(self) -> None:
