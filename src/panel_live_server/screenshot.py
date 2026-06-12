@@ -9,11 +9,11 @@ Playwright is a **required** dependency (included in the base install). Import /
 launch failures are surfaced as :class:`PlaywrightUnavailableError` with an
 install hint so callers can degrade gracefully instead of crashing.
 
-Browser selection is automatic — no manual install step required:
+Browser selection is automatic (first that launches wins):
 
-1. If system **Chrome** or **Edge** is found, it is used immediately (no download).
-2. Otherwise the bundled **Chromium** is tried; if absent it is downloaded (~150 MB).
-3. If that fails, **Firefox** then **WebKit** are tried (same: use if present, download if not).
+1. System **Chrome** or **Edge**, if installed (no extra download).
+2. A Playwright-bundled engine — **Chromium**, then **Firefox**, then **WebKit** —
+   whichever was installed via ``playwright install`` (Chromium by default).
 
 To pin a specific browser instead of auto-detecting, set one of:
 
@@ -33,7 +33,7 @@ class PlaywrightUnavailableError(RuntimeError):
 
 
 _INSTALL_HINT = (
-    "Could not find or install any browser. Try installing one manually:\n"
+    "No usable browser found. Install one with:\n"
     "    playwright install chromium\n"
     "Or reuse an existing browser by setting:\n"
     "    PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL=chrome  (or msedge)\n"
@@ -51,15 +51,6 @@ _FALLBACK_ENGINES = ("chromium", "firefox", "webkit")
 _CONTENT_SELECTOR = "canvas, .bk-Row, .bk-Column, .bk, .markdown, table, img, svg"
 
 
-def is_available() -> bool:
-    """Return ``True`` if the Playwright Python package is importable."""
-    try:
-        import playwright.async_api  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
 class _BrowserManager:
     """Lazily launches and reuses a single shared headless browser.
 
@@ -68,7 +59,7 @@ class _BrowserManager:
     1. Env-var override (``PANEL_LIVE_SERVER_SCREENSHOT_BROWSER_CHANNEL`` /
        ``..._BROWSER_PATH``) — user picks explicitly, no auto-detection.
     2. System Chrome → system Edge (channel API, zero download).
-    3. Bundled Chromium → Firefox → WebKit (each installed on demand if absent).
+    3. Bundled Chromium → Firefox → WebKit (whichever is already installed).
     """
 
     def __init__(self) -> None:
@@ -185,16 +176,6 @@ class _BrowserManager:
                 pass
             self._playwright = None
 
-    async def shutdown(self) -> None:
-        """Close the shared browser and stop Playwright (best-effort, idempotent)."""
-        if self._browser is not None:
-            try:
-                await self._browser.close()
-            except Exception:
-                pass
-            self._browser = None
-        await self._stop_playwright()
-
 
 _manager = _BrowserManager()
 
@@ -213,8 +194,7 @@ async def capture_png(
     Returns
     -------
     bytes
-        ``(content_found, issues)`` — whether Panel content was detected and
-        any warning/error strings found on the page.
+        PNG image data.
 
     Raises
     ------
@@ -229,8 +209,3 @@ async def capture_png(
         settle_ms=settle_ms,
         timeout_ms=timeout_ms,
     )
-
-
-async def shutdown_browser() -> None:
-    """Close the shared browser (best-effort). Safe to call when never launched."""
-    await _manager.shutdown()

@@ -227,9 +227,9 @@ class ScreenshotEndpoint(RequestHandler):
 
     Loads the live ``/view`` page in a headless browser (Playwright) and returns
     a PNG, giving LLMs a picture of the *rendered* output — layout, fonts, and
-    margins as a user would see them. Playwright is optional; when it is not
-    installed this returns HTTP 503 with an install hint so the caller can
-    surface a clear message instead of failing opaquely.
+    margins as a user would see them. When no browser is installed/launchable
+    this returns HTTP 503 with an install hint so the caller can surface a clear
+    message instead of failing opaquely.
 
     Query parameters
     ----------------
