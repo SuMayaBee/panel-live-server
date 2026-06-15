@@ -123,28 +123,6 @@ def _raise_validation_error(validation: dict) -> None:
         raise ValidationError(message)
 
 
-async def _ensure_validated(code: str, method: str) -> None:
-    """Run static + runtime validation unless already cached in ``_fully_validated``.
-
-    Raises ``SecurityError`` or ``ValidationError`` on failure. No-op if the
-    ``(code, method)`` pair was already validated this session.
-    """
-    if (code, method) in _fully_validated:
-        return
-
-    validation = _run_validation(code, method)
-    if not validation["valid"]:
-        _raise_validation_error(validation)
-
-    from panel_live_server.utils import validate_code
-
-    runtime_error = await asyncio.to_thread(validate_code, code)
-    if runtime_error:
-        raise ValidationError(f"[runtime] {runtime_error}")
-
-    _fully_validated.add((code, method))
-
-
 def _externalize_url(url: str) -> str:
     """Convert local URLs to externally reachable URLs using config.external_url."""
     if not url:
@@ -647,7 +625,16 @@ async def show(
     zoom = min(_valid_zooms, key=lambda z: abs(z - zoom))
 
     if quick:
-        await _ensure_validated(code, method)
+        # Quick mode: run full validation (static + runtime) inline.
+        validation = _run_validation(code, method)
+        if not validation["valid"]:
+            _raise_validation_error(validation)
+
+        from panel_live_server.utils import validate_code
+
+        runtime_error = await asyncio.to_thread(validate_code, code)
+        if runtime_error:
+            raise ValidationError(f"[runtime] {runtime_error}")
     else:
         # Standard mode: validate() must have been called first.
         key = (code, method)
@@ -854,15 +841,14 @@ async def screenshot(
     # Fast path: screenshot an existing snippet that `show` already created
     # (no validation, no new snippet). The endpoint 404s if the id is unknown.
     if not snippet_id:
-        # Standalone path: validate + create a snippet to render.
-        await _ensure_validated(code, method)
+        # Standalone path: create a snippet to render. The server validates the
+        # code (incl. security) since we don't pass validated=True.
         try:
             response = client.create_snippet(
                 code=code,
                 name=name,
                 description=description,
                 method=method,
-                validated=True,
             )
         except Exception as e:
             logger.exception(f"Error creating snippet for screenshot: {e}")
