@@ -143,31 +143,6 @@ def _externalize_url(url: str) -> str:
     return f"{external_url.rstrip('/')}{path}{query}"
 
 
-async def _ensure_healthy_client(ctx: Context | None) -> DisplayClient:
-    """Return a healthy DisplayClient, restarting the Panel server if needed.
-
-    Raises ``ToolError`` if the server is not running or cannot be recovered.
-    """
-    global _manager, _client
-
-    if not _client:
-        config = get_config()
-        raise ToolError(f"Panel Live Server is not running. Restart the MCP server. Ensure port {config.port} is not already in use.")
-
-    if not _client.is_healthy():
-        if ctx:
-            await ctx.info("Panel Live Server is not healthy, attempting restart...")
-
-        if _manager and _manager.restart():
-            _client.close()
-            _client = DisplayClient(base_url=_manager.get_base_url())
-        else:
-            config = get_config()
-            raise ToolError(f"Panel Live Server is not healthy and failed to restart. Kill any process on port {config.port} and restart the MCP server.")
-
-    return _client
-
-
 def _get_mcp_client_name(ctx: Context | None) -> str:
     """Return the MCP client name from the initialize handshake (lowercased).
 
@@ -645,8 +620,21 @@ async def show(
         if not validation["valid"]:
             _raise_validation_error(validation)
 
+    if not _client:
+        config = get_config()
+        raise ToolError(f"Panel Live Server is not running. Restart the MCP server. Ensure port {config.port} is not already in use.")
+
     # Check health with restart logic
-    await _ensure_healthy_client(ctx)
+    if not _client.is_healthy():
+        if ctx:
+            await ctx.info("Panel Live Server is not healthy, attempting restart...")
+
+        if _manager and _manager.restart():
+            _client.close()
+            _client = DisplayClient(base_url=_manager.get_base_url())
+        else:
+            config = get_config()
+            raise ToolError(f"Panel Live Server is not healthy and failed to restart. Kill any process on port {config.port} and restart the MCP server.")
 
     # Send request to Panel server
     try:
@@ -733,38 +721,19 @@ async def show(
 
 @mcp.tool(name="screenshot")
 async def screenshot(
-    snippet_id: str = "",
-    code: str = "",
-    name: str = "",
-    description: str = "",
-    method: Literal["inline", "server"] = "server",
+    snippet_id: str,
     width: int = 1200,
     height: int = 800,
     full_page: bool = False,
     ctx: Context | None = None,
 ) -> Image:
-    """See the ACTUAL rendered visualization — returns a PNG image of it to you (the LLM).
+    """See an EXISTING visualization — returns a PNG image of it to you (the LLM).
 
-    Think of this as the visual equivalent of `validate`:
-    - `validate`   → confirms the code runs correctly (no errors)
-    - `screenshot` → lets you SEE the rendered output (layout, fonts, spacing, values)
-    - `show`       → the ONLY tool that displays the result to the user
-
-    The PNG is returned to you (the LLM) so you can inspect it. It is NOT a
-    substitute for `show` — always call `show` so the user gets the interactive
+    Pass the `snippet_id` that `show` returned; this tool screenshots that
+    already-rendered `/view` page and hands you the picture so you can answer a
+    follow-up question about how it LOOKS. It does NOT create or modify anything
+    and is NOT a substitute for `show` — the user already has the interactive
     visualization in their browser.
-
-    ════════════════════════════════════════════════════════════════════════
-    PREFERRED USAGE — pass `snippet_id` of a visualization `show` already made:
-    ════════════════════════════════════════════════════════════════════════
-    If you (or the user) already called `show`, it returned an `id`. Pass that as
-    `snippet_id` here and this tool just screenshots that existing page — no code,
-    no re-validation, no duplicate in the feed. This is the common case for
-    answering a follow-up question about a visualization already on screen.
-
-    Only pass `code` (without `snippet_id`) for a STANDALONE check when nothing has
-    been shown yet — e.g. you want to inspect complex code before calling `show`.
-    Providing `code` creates a new snippet (validates + renders it).
 
     ════════════════════════════════════════════════════════════════════════
     CRITICAL RULE — answering questions ABOUT a visualization's appearance:
@@ -783,11 +752,10 @@ async def screenshot(
     is the only ground truth for a question about appearance — so look at it.
 
     Do not add `np.random.seed(...)` or otherwise make data deterministic just so
-    you can recompute it; render it and read the answer off the actual picture.
+    you can recompute it; read the answer off the actual picture.
 
-    WHEN TO USE:
-    - The user asks a specific question about the rendered output that can only
-      be answered by seeing it (random/dynamic data, or visual position). Examples:
+    WHEN TO USE — a follow-up question about an already-shown visualization that
+    can only be answered by seeing it (random/dynamic data, or visual position):
         · wave/line chart  → "where does it peak?", "where is the trough?"
         · bar chart        → "which bar is the tallest?", "which category leads?"
         · scatter plot     → "where are the outliers?", "how spread out are the points?"
@@ -795,31 +763,14 @@ async def screenshot(
         · pie/donut chart  → "which slice is the largest?"
         · histogram        → "where is the distribution centered?"
         · any chart        → "what color is X?", "what does the legend say?"
-    - The code is complex (multi-panel layouts, dashboards, custom styling) and
-      you want to verify it looks right before calling `show`.
-    - The user reports a visual problem ("legend overlaps", "fonts look off")
-      and you need to see it yourself to fix it.
-    - The user explicitly asks you to check or verify the appearance.
 
-    Typical loop: `validate` → `show` (returns id) → `screenshot(snippet_id=id)` to inspect.
+    Typical loop: `validate` → `show` (returns id) → `screenshot(snippet_id=id)`
+    when the user asks something visual you can't read off the code.
 
     Parameters
     ----------
-    snippet_id : str, optional
-        Id of an existing snippet (as returned by `show`). When given, that page
-        is screenshot directly — no code, no re-validation, no duplicate snippet.
-        Preferred over `code` whenever a visualization already exists.
-    code : str, optional
-        Python code to render — only for standalone checks when nothing has been
-        shown yet. Ignored if `snippet_id` is given. Same rules as `show`:
-        for "inline" the last expression is displayed; for "server" call
-        `.servable()` on the objects to display.
-    name : str, optional
-        Short descriptive name shown in the feed (only used with `code`).
-    description : str, optional
-        One-sentence description (only used with `code`).
-    method : {"inline", "server"}, default "server"
-        Execution mode — same semantics as `show` (only used with `code`).
+    snippet_id : str
+        Id of the visualization to screenshot, as returned by `show`.
     width : int, default 1200
         Browser viewport width in pixels.
     height : int, default 800
@@ -833,36 +784,12 @@ async def screenshot(
     Image
         PNG screenshot of the rendered visualization.
     """
-    if not snippet_id and not code:
-        raise ToolError("Provide either snippet_id (preferred, for an existing visualization) or code (for a standalone check).")
-
-    client = await _ensure_healthy_client(ctx)
-
-    # Fast path: screenshot an existing snippet that `show` already created
-    # (no validation, no new snippet). The endpoint 404s if the id is unknown.
     if not snippet_id:
-        # Standalone path: create a snippet to render. The server validates the
-        # code (incl. security) since we don't pass validated=True.
-        try:
-            response = client.create_snippet(
-                code=code,
-                name=name,
-                description=description,
-                method=method,
-            )
-        except Exception as e:
-            logger.exception(f"Error creating snippet for screenshot: {e}")
-            raise ToolError(f"Failed to create visualization for screenshot: {e!s}.") from e
+        raise ToolError("Provide the snippet_id returned by show() to screenshot its rendered page.")
 
-        if error_message := response.get("error_message", None):
-            raise ToolError(f"Visualization failed at runtime:\n{error_message}\nFix the code and try again.")
-
-        snippet_id = response.get("id", "")
-        if not snippet_id:
-            raise ToolError("Failed to create a snippet for visual check (no id returned).")
-
-    # 4. Capture the rendered page as a PNG.
-    png, error = await asyncio.to_thread(client.get_screenshot, snippet_id, width, height, full_page)
+    # Capture the existing snippet's rendered /view page as a PNG.
+    # The endpoint 404s if the id is unknown.
+    png, error = await asyncio.to_thread(_client.get_screenshot, snippet_id, width, height, full_page)
     if error:
         raise ToolError(f"Screenshot failed: {error}")
     if not png:
