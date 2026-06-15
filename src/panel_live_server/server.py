@@ -23,7 +23,9 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.apps import AppConfig
 from fastmcp.server.apps import ResourceCSP
+from fastmcp.tools.tool import ToolResult
 from fastmcp.utilities.types import Image
+from mcp.types import TextContent
 
 from panel_live_server.client import DisplayClient
 from panel_live_server.config import get_config
@@ -726,7 +728,7 @@ async def screenshot(
     height: int = 800,
     full_page: bool = False,
     ctx: Context | None = None,
-) -> Image:
+) -> ToolResult:
     """See an EXISTING visualization — returns a PNG image of it to you (the LLM).
 
     Pass the `snippet_id` that `show` returned; this tool screenshots that
@@ -753,6 +755,23 @@ async def screenshot(
 
     Do not add `np.random.seed(...)` or otherwise make data deterministic just so
     you can recompute it; read the answer off the actual picture.
+
+    ════════════════════════════════════════════════════════════════════════
+    IMAGE QUALITY — when the picture is not enough:
+    ════════════════════════════════════════════════════════════════════════
+    After receiving the screenshot, check whether it is clear enough to answer:
+      - Is the chart blurry or pixelated?
+      - Is the relevant detail (a label, a tick value, a legend entry) too small
+        to read confidently?
+      - Is the area of interest clipped or off-screen?
+
+    If YES — the image is not reliable enough — do NOT guess from it.
+    Instead, answer the question directly from the code and data (compute
+    the value, read the label, inspect the structure). A code-derived answer
+    is better than a wrong guess from a bad image.
+
+    If the image is fine, always prefer it over recomputing (see CRITICAL RULE
+    above — rendered output and raw data frequently disagree).
 
     WHEN TO USE — a follow-up question about an already-shown visualization that
     can only be answered by seeing it (random/dynamic data, or visual position):
@@ -795,4 +814,17 @@ async def screenshot(
     if not png:
         raise ToolError("Screenshot capture returned no image data.")
 
-    return Image(data=png, format="png")
+    reminder = (
+        "IMAGE QUALITY CHECK — before answering:\n"
+        "· Blurry, pixelated, or clipped? → answer from the code/data instead.\n"
+        "· Text/labels too small to read confidently? → answer from the code/data instead.\n"
+        "· Image is clear and complete? → answer from THIS image only. "
+        "Do NOT recompute from raw data — rendered output and raw data frequently disagree "
+        "(row order, axis inversion, sorting, binning)."
+    )
+    return ToolResult(
+        content=[
+            Image(data=png, format="png").to_image_content(),
+            TextContent(type="text", text=reminder),
+        ]
+    )
