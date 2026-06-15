@@ -20,10 +20,7 @@ class PlaywrightUnavailableError(RuntimeError):
     """Raised when Playwright or its browser is not installed/launchable."""
 
 
-_INSTALL_HINT = (
-    "Playwright Chromium is not installed. Run:\n"
-    "    playwright install chromium"
-)
+_INSTALL_HINT = "Playwright Chromium is not installed. Run:\n" "    playwright install chromium"
 
 # Best-effort wait for Panel/Bokeh content to mount before capturing.
 _CONTENT_SELECTOR = "canvas, .bk-Row, .bk-Column, .bk, .markdown, table, img, svg"

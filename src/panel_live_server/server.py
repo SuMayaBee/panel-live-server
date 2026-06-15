@@ -691,7 +691,7 @@ async def show(
             "Follow-up handling for this visualization:\n"
             f"- If the user only ASKS for information about it (where something peaks, "
             "which element is largest, colors, positions, etc.) without wanting any "
-            f"change, call `screenshot(snippet_id=\"{snippet_id}\")` to SEE the rendered "
+            f'change, call `screenshot(snippet_id="{snippet_id}")` to SEE the rendered '
             "image and answer from it. Do NOT recompute from the code or re-run the data "
             "— the rendered plot can differ from the raw data (row order, axis inversion, "
             "sorting, binning).\n"
@@ -775,7 +775,7 @@ async def screenshot(
 
     WHEN TO USE — a follow-up question about an already-shown visualization that
     can only be answered by seeing it (random/dynamic data, or visual position):
-        · wave/line chart  → "where does it peak?", "where is the trough?"
+        · wave/line chart  → "where does it peak?", "where is the lowest dip?"
         · bar chart        → "which bar is the tallest?", "which category leads?"
         · scatter plot     → "where are the outliers?", "how spread out are the points?"
         · heatmap          → "which cell has the highest value?"
