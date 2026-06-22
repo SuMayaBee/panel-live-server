@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 SHOW_RESOURCE_URI = "ui://panel-live-server/show.html"
 SHOW_TEMPLATE_PATH = Path(__file__).parent / "templates" / "show.html"
 
+# Max size of the base64-encoded, gzipped inline embed. Larger payloads are
+# dropped in favour of the live-server URL to keep the tool response small.
+_EMBED_SIZE_CAP = 150_000
+
 # Global instances
 _manager: PanelServerManager | None = None
 _client: DisplayClient | None = None
@@ -151,6 +155,25 @@ def _get_mcp_client_name(ctx: Context | None) -> str:
         return ctx.request_context.session.client_params.clientInfo.name.lower()  # type: ignore[union-attr]
     except Exception:
         return ""
+
+
+def _embed_fields(embed_html: str | None, is_claude: bool) -> dict[str, str | bool]:
+    """Build the payload fields that tell the client how to render the result.
+
+    ``embed_html`` is self-contained HTML, or ``""``/``None`` when embedding is
+    not possible (e.g. apps with Python callbacks, or a failed render). When the
+    compressed embed fits within ``_EMBED_SIZE_CAP`` it is returned for inline
+    ``srcdoc`` rendering; otherwise Claude clients (whose iframes block the live
+    websocket) get a placeholder signal, while other clients fall back to the
+    live URL already present in the payload.
+    """
+    if embed_html:
+        encoded = base64.b64encode(gzip.compress(embed_html.encode("utf-8"))).decode("ascii")
+        if len(encoded) <= _EMBED_SIZE_CAP:
+            return {"embed_html_gz": encoded}
+    if is_claude:
+        return {"panel_server": True}
+    return {}
 
 
 def _start_panel_server() -> tuple[PanelServerManager | None, DisplayClient | None]:
@@ -620,6 +643,16 @@ async def show(
             _raise_validation_error(validation)
 
     if not _client:
+        # The Panel server was not available at MCP startup (e.g. the port was
+        # transiently occupied by an orphan from a previous session). Rather than
+        # staying permanently broken for the life of this process, retry the
+        # startup lazily here so the tool can self-heal on the next call.
+        logger.warning("Panel Live Server client is not initialized — attempting lazy startup")
+        _manager, _client = _start_panel_server()
+        if _manager:
+            atexit.register(_cleanup)
+
+    if not _client:
         config = get_config()
         raise ToolError(f"Panel Live Server is not running. Restart the MCP server. Ensure port {config.port} is not already in use.")
 
@@ -646,7 +679,7 @@ async def show(
         )
         url = _externalize_url(response.get("url", ""))
 
-        payload: dict[str, str | int] = {
+        payload: dict[str, str | int | bool] = {
             "tool": "show",
             "name": name,
             "description": description,
@@ -661,25 +694,14 @@ async def show(
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
 
-        snippet_id = response.get("id", "")
-
-        if is_claude:
-            # Embed as srcdoc to bypass Claude Desktop's frame-src CSP.
-            # If embed is empty (e.g. pn.bind / DynamicMap need a live server), fall back to placeholder.
-            _EMBED_SIZE_CAP = 150_000
-            if snippet_id:
-                embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
-                if embed_html:
-                    compressed = gzip.compress(embed_html.encode("utf-8"))
-                    encoded = base64.b64encode(compressed).decode("ascii")
-                    if len(encoded) <= _EMBED_SIZE_CAP:
-                        payload["embed_html_gz"] = encoded
-                    else:
-                        payload["panel_server"] = True
-                else:
-                    # Empty string (Python callbacks detected) or None (embed failed):
-                    # in either case the live-server URL will be CSP-blocked in Claude Desktop.
-                    payload["panel_server"] = True
+        # Embed the rendered output as srcdoc so it displays inline without a
+        # live websocket back to the Panel server, which both Claude Desktop
+        # (frame-src CSP) and Cowork (sandboxed iframe that blocks the websocket)
+        # require. This runs for every client, not just "claude-ai": Cowork
+        # reports a different client name and would otherwise render a blank pane.
+        if snippet_id := response.get("id", ""):
+            embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
+            payload.update(_embed_fields(embed_html, is_claude))
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
