@@ -1,5 +1,7 @@
 """Tests for the Panel Live Server MCP server."""
 
+import base64
+import gzip
 import json
 
 import pytest
@@ -9,6 +11,7 @@ from typer.testing import CliRunner
 
 import panel_live_server.server as server_module
 from panel_live_server.cli import app
+from panel_live_server.server import _embed_fields
 from panel_live_server.server import mcp
 from panel_live_server.validation import SecurityError
 from panel_live_server.validation import ValidationError
@@ -340,20 +343,44 @@ async def test_show_quick_raises_validation_error_on_missing_package():
 
 
 @pytest.mark.asyncio
-async def test_show_raises_tool_error_when_server_not_running():
-    """show raises ToolError when the Panel server client is None (valid code)."""
+async def test_show_recovers_when_client_uninitialized():
+    """show self-heals when _client is None: it lazily (re)starts the server.
+
+    A failed startup must not wedge the process forever — the next show should
+    retry _start_panel_server() (which adopts the running server) and succeed.
+    """
     server_module._validation_cache.clear()
     server_module._fully_validated.clear()
     client = Client(mcp)
     async with client:
-        # Override _client after the lifespan has set it, to simulate server absence.
-        saved = server_module._client
+        saved_client, saved_manager = server_module._client, server_module._manager
         server_module._client = None
         try:
-            with pytest.raises(ToolError):
-                await client.call_tool("show", {"code": "x = 1", "quick": True})
+            result = await client.call_tool("show", {"code": "x = 1", "quick": True})
+            payload = json.loads(result.content[0].text)
+            assert payload["status"] == "success"
+            assert server_module._client is not None  # recovered
         finally:
-            server_module._client = saved
+            server_module._client, server_module._manager = saved_client, saved_manager
+
+
+@pytest.mark.asyncio
+async def test_show_raises_tool_error_when_startup_fails():
+    """show raises ToolError when _client is None and lazy startup also fails."""
+    from unittest.mock import patch
+
+    server_module._validation_cache.clear()
+    server_module._fully_validated.clear()
+    client = Client(mcp)
+    async with client:
+        saved_client, saved_manager = server_module._client, server_module._manager
+        server_module._client = None
+        try:
+            with patch.object(server_module, "_start_panel_server", return_value=(None, None)):
+                with pytest.raises(ToolError, match="not running"):
+                    await client.call_tool("show", {"code": "x = 1", "quick": True})
+        finally:
+            server_module._client, server_module._manager = saved_client, saved_manager
 
 
 @pytest.mark.asyncio
@@ -452,3 +479,51 @@ async def test_show_quick_raises_validation_error_for_missing_extension_panel_me
                 "show",
                 {"code": "x = 1  # plotly visualization", "method": "server", "quick": True},
             )
+
+
+# ---------------------------------------------------------------------------
+# server._embed_fields — payload fields controlling how the client renders
+# ---------------------------------------------------------------------------
+
+
+def test_embed_fields_within_cap_round_trips():
+    """A small embed is gzip+base64 encoded under 'embed_html_gz' and decodes back."""
+    html = "<html><body>hello</body></html>"
+    fields = _embed_fields(html, embed_only=True)
+    assert set(fields) == {"embed_html_gz"}
+    decoded = gzip.decompress(base64.b64decode(fields["embed_html_gz"])).decode("utf-8")
+    assert decoded == html
+
+
+@pytest.mark.parametrize(
+    ("embed_html", "embed_only", "oversized", "expected"),
+    [
+        # Embeddable HTML always wins, regardless of client.
+        ("<p>x</p>", True, False, {"embed_html_gz"}),
+        ("<p>x</p>", False, False, {"embed_html_gz"}),
+        # No embed available (Python-callback app or failed render):
+        # embed_only clients get the live-server placeholder...
+        ("", True, False, {"panel_server"}),
+        (None, True, False, {"panel_server"}),
+        # ...while other clients fall back to the live URL already in the payload.
+        ("", False, False, set()),
+        (None, False, False, set()),
+        # Oversized embed is dropped, then falls back the same way.
+        ("<p>too big</p>", True, True, {"panel_server"}),
+        ("<p>too big</p>", False, True, set()),
+    ],
+    ids=[
+        "embed_claude",
+        "embed_other",
+        "empty_claude",
+        "none_claude",
+        "empty_other",
+        "none_other",
+        "oversized_claude",
+        "oversized_other",
+    ],
+)
+def test_embed_fields_branches(monkeypatch, embed_html, embed_only, oversized, expected):
+    if oversized:
+        monkeypatch.setattr(server_module, "_EMBED_SIZE_CAP", 1)
+    assert set(_embed_fields(embed_html, embed_only=embed_only)) == expected
