@@ -157,21 +157,21 @@ def _get_mcp_client_name(ctx: Context | None) -> str:
         return ""
 
 
-def _embed_fields(embed_html: str | None, is_claude: bool) -> dict[str, str | bool]:
+def _embed_fields(embed_html: str | None, embed_only: bool) -> dict[str, str | bool]:
     """Build the payload fields that tell the client how to render the result.
 
     ``embed_html`` is self-contained HTML, or ``""``/``None`` when embedding is
     not possible (e.g. apps with Python callbacks, or a failed render). When the
     compressed embed fits within ``_EMBED_SIZE_CAP`` it is returned for inline
-    ``srcdoc`` rendering; otherwise Claude clients (whose iframes block the live
-    websocket) get a placeholder signal, while other clients fall back to the
-    live URL already present in the payload.
+    ``srcdoc`` rendering. Otherwise ``embed_only`` clients (whose iframes can't
+    reach the live server) get a placeholder signal, while other clients fall
+    back to the live URL already present in the payload.
     """
     if embed_html:
         encoded = base64.b64encode(gzip.compress(embed_html.encode("utf-8"))).decode("ascii")
         if len(encoded) <= _EMBED_SIZE_CAP:
             return {"embed_html_gz": encoded}
-    if is_claude:
+    if embed_only:
         return {"panel_server": True}
     return {}
 
@@ -615,7 +615,10 @@ async def show(
     global _manager, _client
 
     client_name = _get_mcp_client_name(ctx)
-    is_claude = client_name == "claude-ai"
+    # Clients whose iframes can't reach the live Panel server and must render
+    # embedded HTML instead: Claude Desktop ("claude-ai", frame-src CSP) and
+    # Cowork ("local-agent-mode-<connector>", sandboxed iframe blocks the websocket).
+    embed_only = client_name == "claude-ai" or client_name.startswith("local-agent-mode-")
 
     # Clamp zoom to nearest valid level
     _valid_zooms = [25, 50, 75, 100]
@@ -697,11 +700,11 @@ async def show(
         # Embed the rendered output as srcdoc so it displays inline without a
         # live websocket back to the Panel server, which both Claude Desktop
         # (frame-src CSP) and Cowork (sandboxed iframe that blocks the websocket)
-        # require. This runs for every client, not just "claude-ai": Cowork
-        # reports a different client name and would otherwise render a blank pane.
+        # require. This runs for every client; the live URL stays in the payload
+        # as a fallback for clients that can reach the server directly.
         if snippet_id := response.get("id", ""):
             embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
-            payload.update(_embed_fields(embed_html, is_claude))
+            payload.update(_embed_fields(embed_html, embed_only))
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
