@@ -122,6 +122,47 @@ class DisplayClient:
             logger.warning("Embed render request error for snippet %s: %s", snippet_id, e)
             return None
 
+    def get_screenshot(
+        self,
+        snippet_id: str,
+        width: int | None = None,
+        height: int | None = None,
+        full_page: bool = False,
+    ) -> tuple[bytes | None, str | None]:
+        """Fetch a PNG screenshot of a snippet's rendered ``/view`` page.
+
+        Returns
+        -------
+        tuple[bytes | None, str | None]
+            ``(png_bytes, None)`` on success, or ``(None, error_message)`` on failure.
+        """
+        params: dict[str, str | int] = {"id": snippet_id, "full_page": str(full_page).lower()}
+        if width:
+            params["width"] = width
+        if height:
+            params["height"] = height
+
+        try:
+            response = self.session.get(
+                f"{self.base_url}/api/screenshot",
+                params=params,
+                timeout=max(self.timeout, 60),
+            )
+        except requests.RequestException as e:
+            logger.warning("Screenshot request error for snippet %s: %s", snippet_id, e)
+            return None, f"Screenshot request failed: {e}"
+
+        if response.status_code == 200 and "image/png" in response.headers.get("Content-Type", ""):
+            return response.content, None
+
+        try:
+            body = response.json()
+            message = body.get("message") or body.get("error") or response.text
+        except ValueError:
+            message = response.text or f"HTTP {response.status_code}"
+        logger.warning("Screenshot failed (HTTP %s) for snippet %s: %s", response.status_code, snippet_id, message)
+        return None, message
+
     def close(self) -> None:
         """Close the HTTP session and cleanup resources."""
         if self.session:

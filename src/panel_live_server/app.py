@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from panel_live_server.config import get_config
 from panel_live_server.endpoints import EmbedEndpoint
 from panel_live_server.endpoints import HealthEndpoint
+from panel_live_server.endpoints import ScreenshotEndpoint
 from panel_live_server.endpoints import SnippetEndpoint
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ def main(address: str = "localhost", port: int = 5077, show: bool = True) -> Non
     extra_patterns = [
         (r"/api/snippet", SnippetEndpoint),
         (r"/api/embed", EmbedEndpoint),
+        (r"/api/screenshot", ScreenshotEndpoint),
         (r"/api/health", HealthEndpoint),
     ]
 
