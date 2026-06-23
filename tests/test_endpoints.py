@@ -179,7 +179,7 @@ class TestSnippetEndpoint(AsyncHTTPTestCase):
         # .bind on a non-Panel object must not be flagged.
         ("functools.partial(fn, 1).bind(2)", False),
         ("obj.bind(x)", False),
-        # Unparseable code degrades to "no callbacks" rather than raising.
+        # Unparsable code degrades to "no callbacks" rather than raising.
         ("def broken(:", False),
         ("", False),
     ],
