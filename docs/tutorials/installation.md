@@ -144,6 +144,12 @@ directory is on your PATH — run `uv tool update-shell` and restart your termin
 
     Restart Claude Desktop.
 
+    !!! note "Enable the connector in Cowork"
+        To use the `show` tool from Cowork, open **Customize → Connectors →
+        panel-live-server** and set its permission to **Always Allow** (runs
+        without prompting) or **Needs approval** (asks before each call). If the
+        connector is left disabled, the tool won't be available in Cowork.
+
 === "Claude Code"
 
     ```bash

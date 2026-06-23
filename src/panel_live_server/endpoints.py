@@ -5,8 +5,10 @@ HTTP endpoints for creating visualizations and checking server health.
 """
 
 import ast
+import io
 import json
 import logging
+import sys
 import traceback
 from datetime import datetime
 from datetime import timezone
@@ -15,6 +17,9 @@ from tornado.web import RequestHandler
 
 from panel_live_server.config import get_config
 from panel_live_server.database import get_db
+from panel_live_server.utils import execute_in_module
+from panel_live_server.utils import extract_last_expression
+from panel_live_server.utils import find_extensions
 from panel_live_server.validation import SecurityError
 
 logger = logging.getLogger(__name__)
@@ -139,40 +144,40 @@ class EmbedEndpoint(RequestHandler):
     Python callbacks are not.
     """
 
+    def _write_html(self, html: str) -> None:
+        """Write an HTML response body with a 200 status."""
+        self.set_status(200)
+        self.set_header("Content-Type", "text/html; charset=utf-8")
+        self.write(html)
+
+    def _write_json_error(self, status: int, body: dict) -> None:
+        """Write a JSON error response with the given status code."""
+        self.set_status(status)
+        self.set_header("Content-Type", "application/json")
+        self.write(body)
+
     def get(self):
         """Render the snippet identified by ``?id=`` as static HTML."""
-        import io
-        import sys
-
+        # panel is slow to import; keep it out of module load so registering the
+        # handler at server startup stays cheap.
         import panel as pn
-
-        from panel_live_server.utils import execute_in_module
-        from panel_live_server.utils import extract_last_expression
-        from panel_live_server.utils import find_extensions
 
         snippet_id = self.get_argument("id", "")
         if not snippet_id:
-            self.set_status(400)
-            self.set_header("Content-Type", "application/json")
-            self.write({"error": "Missing 'id' parameter"})
+            self._write_json_error(400, {"error": "Missing 'id' parameter"})
             return
 
-        db = get_db()
-        snippet = db.get_snippet(snippet_id)
+        snippet = get_db().get_snippet(snippet_id)
         if not snippet:
-            self.set_status(404)
-            self.set_header("Content-Type", "application/json")
-            self.write({"error": f"Snippet {snippet_id} not found"})
+            self._write_json_error(404, {"error": f"Snippet {snippet_id} not found"})
             return
 
         if _has_python_callbacks(snippet.app):
-            # Python callbacks (on_click, pn.bind, etc.) are not captured by Panel's embed
-            # mode — the button/widget renders but clicking/interacting does nothing in a
-            # srcdoc iframe without a live server. Return empty so the caller falls back to
+            # Python callbacks (on_click, pn.bind, etc.) are not captured by Panel's
+            # embed mode — the widget renders but interacting does nothing in a srcdoc
+            # iframe without a live server. Return empty so the caller falls back to
             # the live-server placeholder.
-            self.set_status(200)
-            self.set_header("Content-Type", "text/html; charset=utf-8")
-            self.write("")
+            self._write_html("")
             return
 
         try:
@@ -182,7 +187,6 @@ class EmbedEndpoint(RequestHandler):
             preamble = "import panel as pn\n\npn.config.design = None\n\n"
             app = preamble + snippet.app
             module_name = f"bokeh_app_embed_{snippet.id.replace('-', '_')}"
-            result = None
 
             statements, last_expr = extract_last_expression(app)
             namespace = execute_in_module(statements, module_name=module_name, cleanup=False)
@@ -192,29 +196,20 @@ class EmbedEndpoint(RequestHandler):
                 sys.modules.pop(module_name, None)
 
             if result is None:
-                self.set_status(200)
-                self.set_header("Content-Type", "text/html; charset=utf-8")
-                self.write(
+                self._write_html(
                     "<!doctype html><html><body style='font-family:system-ui;padding:2em;opacity:.7'>"
                     "<p>Code executed successfully (no output to display).</p>"
                     "</body></html>"
                 )
                 return
 
-            obj = pn.panel(result, sizing_mode="stretch_width")
             buf = io.StringIO()
-            obj.save(buf, resources="cdn", embed=True, max_states=500)
-            html = buf.getvalue()
-
-            self.set_status(200)
-            self.set_header("Content-Type", "text/html; charset=utf-8")
-            self.write(html)
+            pn.panel(result, sizing_mode="stretch_width").save(buf, resources="cdn", embed=True, max_states=500)
+            self._write_html(buf.getvalue())
 
         except Exception as e:
             logger.exception(f"Error rendering embed for snippet {snippet_id}")
-            self.set_status(500)
-            self.set_header("Content-Type", "application/json")
-            self.write({"error": str(e), "traceback": traceback.format_exc()})
+            self._write_json_error(500, {"error": str(e), "traceback": traceback.format_exc()})
 
 
 def _local_host(host: str) -> str:

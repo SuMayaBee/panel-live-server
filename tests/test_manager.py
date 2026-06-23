@@ -126,27 +126,37 @@ def test_build_subprocess_env_prepends_environment_paths(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_try_recover_stale_orphan_handles_no_such_process(monkeypatch, tmp_path, _patch_psutil):
-    """NoSuchProcess during force-kill should be treated as already gone."""
-    _patch_psutil(kill_side_effect=FakeNoSuchProcess)
+def test_try_recover_adopts_healthy_unowned_server(monkeypatch, tmp_path):
+    """A healthy server already on the port that we don't own is adopted, not killed.
 
+    Multiple MCP instances (e.g. the desktop UI client and the Cowork agent client)
+    share one Panel server: only one can bind the port, so every other instance must
+    adopt the running server instead of killing it and racing for the port.
+    """
     manager = PanelServerManager(db_path=tmp_path / "snippets.db", port=5090, host="127.0.0.1")
+    assert manager.process is None  # we did not start this server
 
     monkeypatch.setattr(manager_module.requests, "get", lambda *a, **kw: SimpleNamespace(status_code=200))
-    monkeypatch.setattr(manager, "_find_pid_on_port", lambda: 4321)
-    monkeypatch.setattr(manager, "_is_port_in_use", lambda: True)
-    monkeypatch.setattr(manager_module.time, "sleep", lambda _: None)
 
-    killed = {"pid": None, "sig": None}
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
 
-    def _fake_kill(pid, sig):
-        killed["pid"] = pid
-        killed["sig"] = sig
+    assert manager._try_recover_stale_server() is True
+    assert killed == []  # adopted, not killed
 
-    monkeypatch.setattr(os, "kill", _fake_kill)
 
-    assert manager._try_recover_stale_server() is False
-    assert killed["pid"] == 4321
+def test_try_recover_adopts_owned_running_server(monkeypatch, tmp_path):
+    """A healthy server we started ourselves is also reported as available."""
+    manager = PanelServerManager(db_path=tmp_path / "snippets.db", port=5090, host="127.0.0.1")
+    manager.process = SimpleNamespace(poll=lambda: None)  # we own a live subprocess
+
+    monkeypatch.setattr(manager_module.requests, "get", lambda *a, **kw: SimpleNamespace(status_code=200))
+
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
+
+    assert manager._try_recover_stale_server() is True
+    assert killed == []
 
 
 def test_try_recover_unhealthy_handles_access_denied(monkeypatch, tmp_path, _patch_psutil):

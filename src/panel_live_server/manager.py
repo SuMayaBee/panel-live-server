@@ -113,16 +113,20 @@ class PanelServerManager:
         """Try to recover from a stale server occupying the port.
 
         If the port is in use, checks whether the existing server is healthy.
-        - If healthy AND we own the subprocess (``self.process`` is set): adopt it.
-        - If healthy but we do NOT own it (orphan from a previous session): kill it
-          and return ``False`` so ``start()`` launches a fresh subprocess with the
-          current code.
-        - If unhealthy (zombie): find and kill the stale process.
+        - If healthy (whether or not we own the subprocess): adopt it. The Panel
+          server is treated as a shared singleton, so multiple MCP instances
+          (e.g. the desktop UI client and the Cowork agent client) can each
+          connect to the same server instead of racing for the port. Only one
+          process can bind 5077; every other instance must adopt it or it ends
+          up permanently unusable with ``_client = None``.
+        - If unhealthy (zombie): find and kill the stale process so ``start()``
+          can launch a fresh one.
 
         Returns
         -------
         bool
-            True if a healthy server we own is available on the port, False otherwise.
+            True if a healthy server is available on the port to adopt,
+            False otherwise.
         """
         # First check if the existing server responds to health checks
         try:
@@ -131,30 +135,13 @@ class PanelServerManager:
                 if self.process is not None and self.process.poll() is None:
                     # We own this process — it is still running from this session.
                     logger.info(f"Found healthy Panel server already running on port {self.port}")
-                    return True
-                # Healthy but unowned — orphan from a previous MCP session (e.g. the
-                # MCP server was killed with SIGTERM/SIGKILL before atexit could run).
-                # Kill it so we start fresh with the current code.
-                logger.info(f"Found orphaned Panel server on port {self.port} (not owned by this session) — " "stopping it to ensure current code is loaded.")
-                stale_pid = self._find_pid_on_port()
-                if stale_pid:
-                    try:
-                        os.kill(stale_pid, signal.SIGTERM)
-                        for _ in range(10):
-                            time.sleep(0.5)
-                            if not self._is_port_in_use():
-                                logger.info(f"Orphaned Panel server (PID {stale_pid}) stopped.")
-                                return False
-                        if not _force_kill_pid(stale_pid):
-                            logger.warning(f"Cannot replace orphaned process (PID {stale_pid}), adopting it")
-                            return True
-                        time.sleep(1)
-                    except ProcessLookupError:
-                        pass  # Already gone
-                    except PermissionError:
-                        logger.error(f"No permission to kill orphaned process (PID {stale_pid})")
-                        return True  # Can't replace it; adopt as fallback
-                return False
+                else:
+                    # Healthy but unowned — another MCP instance (or a previous
+                    # session) already started it. Adopt and share it rather than
+                    # killing it, so this instance gets a working client instead
+                    # of colliding on the port and ending up with _client = None.
+                    logger.info(f"Adopting healthy Panel server already running on port {self.port} (owned by another instance).")
+                return True
         except requests.RequestException:
             pass
 
