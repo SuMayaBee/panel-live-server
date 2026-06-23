@@ -527,3 +527,28 @@ def test_embed_fields_branches(monkeypatch, embed_html, embed_only, oversized, e
     if oversized:
         monkeypatch.setattr(server_module, "_EMBED_SIZE_CAP", 1)
     assert set(_embed_fields(embed_html, embed_only=embed_only)) == expected
+
+
+def test_embed_fields_cowork_cap_falls_back_to_link():
+    """An embed under the Desktop cap but over Cowork's tight cap falls back gracefully.
+
+    Cowork counts the tool result against its model token budget, so an embed that
+    Desktop would render inline must instead drop to the live-server placeholder
+    (the "open in browser" link) rather than overflowing Cowork's limit.
+    """
+    import random
+
+    from panel_live_server.server import _COWORK_EMBED_SIZE_CAP
+    from panel_live_server.server import _EMBED_SIZE_CAP
+
+    # High-entropy (incompressible) body so the encoded embed lands between the
+    # two caps — repetitive content would gzip away to almost nothing.
+    rng = random.Random(0)
+    blob = base64.b64encode(bytes(rng.randrange(256) for _ in range(60_000))).decode("ascii")
+    big_html = "<html><body>" + blob + "</body></html>"
+    encoded_len = len(base64.b64encode(gzip.compress(big_html.encode("utf-8"))).decode("ascii"))
+    assert _COWORK_EMBED_SIZE_CAP < encoded_len <= _EMBED_SIZE_CAP
+
+    # Desktop cap: embeds inline. Cowork cap: drops to the placeholder link.
+    assert set(_embed_fields(big_html, embed_only=True)) == {"embed_html_gz"}
+    assert set(_embed_fields(big_html, embed_only=True, cap=_COWORK_EMBED_SIZE_CAP)) == {"panel_server"}
