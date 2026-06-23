@@ -42,6 +42,7 @@ dependencies = [
     "fastmcp >=3.0",
     "typer",
     "ruff",
+    "playwright",
 ]
 
 [project.scripts]

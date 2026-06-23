@@ -60,6 +60,10 @@ class Config(BaseModel):
             "or CODESPACE_NAME (GitHub Codespaces) if not set explicitly via PANEL_LIVE_SERVER_EXTERNAL_URL."
         ),
     )
+    screenshot_width: int = Field(default=1200, description="Viewport width (px) for screenshot capture")
+    screenshot_height: int = Field(default=800, description="Viewport height (px) for screenshot capture")
+    screenshot_settle_ms: int = Field(default=1200, description="Delay (ms) after content mounts before capturing, to let Bokeh finish drawing")
+    screenshot_timeout_ms: int = Field(default=30000, description="Max time (ms) to wait for the page to load before capturing")
 
 
 _config: Config | None = None
@@ -76,6 +80,10 @@ def get_config() -> Config:
             max_restarts=int(os.getenv("PANEL_LIVE_SERVER_MAX_RESTARTS", "3")),
             db_path=Path(os.getenv("PANEL_LIVE_SERVER_DB_PATH", str(_default_user_dir() / "snippets" / "snippets.db"))),
             external_url=_resolve_external_url(port),
+            screenshot_width=int(os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_WIDTH", "1200")),
+            screenshot_height=int(os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_HEIGHT", "800")),
+            screenshot_settle_ms=int(os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_SETTLE_MS", "1200")),
+            screenshot_timeout_ms=int(os.getenv("PANEL_LIVE_SERVER_SCREENSHOT_TIMEOUT_MS", "30000")),
         )
     return _config
 

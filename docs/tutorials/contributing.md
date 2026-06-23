@@ -30,6 +30,7 @@ git checkout -b feature/YourFeature
     ```bash
     uv venv && source .venv/bin/activate
     uv pip install -e ".[dev]"
+    playwright install chromium
 
     # Find the pls path
     which pls
@@ -38,6 +39,8 @@ git checkout -b feature/YourFeature
 
     !!! note
         Run `source .venv/bin/activate` in every new terminal to re-activate the venv.
+        `playwright install chromium` is a one-time step that downloads the browser binary
+        (~150 MB) required by the `screenshot` MCP tool.
 
 === "pixi"
 
@@ -51,7 +54,8 @@ git checkout -b feature/YourFeature
     ```
 
     !!! note
-        Prefix commands with `pixi run` (e.g. `pixi run pytest`) to use the pixi env without activating it.
+        Prefix commands with `pixi run` (e.g. `pixi run pytest`) to use the pixi env without
+        activating it. `pixi run postinstall` already installs Chromium automatically.
 
 ---
 

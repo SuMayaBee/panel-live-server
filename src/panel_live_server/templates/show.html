@@ -394,6 +394,21 @@
         let parsedPayload = null;
         try {
           parsedPayload = JSON.parse(rawText);
+          // FastMCP (>=3) wraps plain string returns in an output-schema
+          // envelope: {"result": "<json string>"}. Unwrap it so url/status/code
+          // are read from the actual payload rather than the envelope.
+          if (
+            parsedPayload &&
+            typeof parsedPayload === "object" &&
+            typeof parsedPayload.result === "string" &&
+            parsedPayload.url === undefined
+          ) {
+            try {
+              parsedPayload = JSON.parse(parsedPayload.result);
+            } catch {
+              /* leave parsedPayload as the envelope if inner parse fails */
+            }
+          }
         } catch {
           parsedPayload = null;
         }

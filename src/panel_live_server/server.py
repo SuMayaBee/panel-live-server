@@ -23,6 +23,9 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.apps import AppConfig
 from fastmcp.server.apps import ResourceCSP
+from fastmcp.tools.tool import ToolResult
+from fastmcp.utilities.types import Image
+from mcp.types import TextContent
 
 from panel_live_server.client import DisplayClient
 from panel_live_server.config import get_config
@@ -39,6 +42,14 @@ logger = logging.getLogger(__name__)
 
 SHOW_RESOURCE_URI = "ui://panel-live-server/show.html"
 SHOW_TEMPLATE_PATH = Path(__file__).parent / "templates" / "show.html"
+
+# Max size of the base64-encoded, gzipped inline embed. Larger payloads are
+# dropped in favour of the live-server URL to keep the tool response small.
+# Claude Desktop renders the embed in a webview, so it tolerates large payloads.
+_EMBED_SIZE_CAP = 150_000
+
+# Cowork counts the embed against its 25,000-token tool-result budget; keep this conservative so oversized embeds fall back to the link instead of erroring.
+_COWORK_EMBED_SIZE_CAP = 25_000
 
 # Global instances
 _manager: PanelServerManager | None = None
@@ -151,6 +162,32 @@ def _get_mcp_client_name(ctx: Context | None) -> str:
         return ctx.request_context.session.client_params.clientInfo.name.lower()  # type: ignore[union-attr]
     except Exception:
         return ""
+
+
+def _embed_fields(embed_html: str | None, embed_only: bool, cap: int | None = None) -> dict[str, str | bool]:
+    """Build the payload fields that tell the client how to render the result.
+
+    ``embed_html`` is self-contained HTML, or ``""``/``None`` when embedding is
+    not possible (e.g. apps with Python callbacks, or a failed render). When the
+    compressed embed fits within ``cap`` it is returned for inline ``srcdoc``
+    rendering. Otherwise ``embed_only`` clients (whose iframes can't reach the
+    live server) get a placeholder signal, while other clients fall back to the
+    live URL already present in the payload.
+
+    ``cap`` is the max length of the encoded embed. It varies by client:
+    Desktop tolerates large embeds (``_EMBED_SIZE_CAP``); Cowork has a tight
+    token budget (``_COWORK_EMBED_SIZE_CAP``), so oversized embeds gracefully
+    fall back to the link rather than overflowing its limit.
+    """
+    if cap is None:
+        cap = _EMBED_SIZE_CAP
+    if embed_html:
+        encoded = base64.b64encode(gzip.compress(embed_html.encode("utf-8"))).decode("ascii")
+        if len(encoded) <= cap:
+            return {"embed_html_gz": encoded}
+    if embed_only:
+        return {"panel_server": True}
+    return {}
 
 
 def _start_panel_server() -> tuple[PanelServerManager | None, DisplayClient | None]:
@@ -592,7 +629,13 @@ async def show(
     global _manager, _client
 
     client_name = _get_mcp_client_name(ctx)
-    is_claude = client_name == "claude-ai"
+    # Cowork runs as a local agent: the tool result counts against its model
+    # token budget, so its embed must stay under a tight cap.
+    is_cowork = client_name.startswith("local-agent-mode-")
+    # Clients whose iframes can't reach the live Panel server and must render
+    # embedded HTML instead: Claude Desktop ("claude-ai", frame-src CSP) and
+    # Cowork ("local-agent-mode-<connector>", sandboxed iframe blocks the websocket).
+    embed_only = client_name == "claude-ai" or is_cowork
 
     # Clamp zoom to nearest valid level
     _valid_zooms = [25, 50, 75, 100]
@@ -618,6 +661,16 @@ async def show(
         validation = _run_validation(code, method)
         if not validation["valid"]:
             _raise_validation_error(validation)
+
+    if not _client:
+        # The Panel server was not available at MCP startup (e.g. the port was
+        # transiently occupied by an orphan from a previous session). Rather than
+        # staying permanently broken for the life of this process, retry the
+        # startup lazily here so the tool can self-heal on the next call.
+        logger.warning("Panel Live Server client is not initialized — attempting lazy startup")
+        _manager, _client = _start_panel_server()
+        if _manager:
+            atexit.register(_cleanup)
 
     if not _client:
         config = get_config()
@@ -646,7 +699,7 @@ async def show(
         )
         url = _externalize_url(response.get("url", ""))
 
-        payload: dict[str, str | int] = {
+        payload: dict[str, str | int | bool] = {
             "tool": "show",
             "name": name,
             "description": description,
@@ -663,26 +716,29 @@ async def show(
 
         snippet_id = response.get("id", "")
 
-        if is_claude:
-            # Embed as srcdoc to bypass Claude Desktop's frame-src CSP.
-            # If embed is empty (e.g. pn.bind / DynamicMap need a live server), fall back to placeholder.
-            _EMBED_SIZE_CAP = 150_000
-            if snippet_id:
-                embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
-                if embed_html:
-                    compressed = gzip.compress(embed_html.encode("utf-8"))
-                    encoded = base64.b64encode(compressed).decode("ascii")
-                    if len(encoded) <= _EMBED_SIZE_CAP:
-                        payload["embed_html_gz"] = encoded
-                    else:
-                        payload["panel_server"] = True
-                else:
-                    # Empty string (Python callbacks detected) or None (embed failed):
-                    # in either case the live-server URL will be CSP-blocked in Claude Desktop.
-                    payload["panel_server"] = True
+        # Embed the rendered output as srcdoc so it displays inline without a live
+        # websocket back to the Panel server — needed only by clients whose iframe
+        # can't reach the server: Claude Desktop (frame-src CSP) and Cowork
+        # (sandboxed iframe). Clients that can reach the server (VS Code, Cursor,
+        # Claude Code) skip the embed and use the live URL already in the payload.
+        if embed_only and snippet_id:
+            embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
+            cap = _COWORK_EMBED_SIZE_CAP if is_cowork else _EMBED_SIZE_CAP
+            payload.update(_embed_fields(embed_html, embed_only, cap))
 
         payload["status"] = "success"
         payload["message"] = "Visualization created successfully."
+        payload["hint"] = (
+            "Follow-up handling for this visualization:\n"
+            f"- If the user only ASKS for information about it (where something peaks, "
+            "which element is largest, colors, positions, etc.) without wanting any "
+            f'change, call `screenshot(snippet_id="{snippet_id}")` to SEE the rendered '
+            "image and answer from it. Do NOT recompute from the code or re-run the data "
+            "— the rendered plot can differ from the raw data (row order, axis inversion, "
+            "sorting, binning).\n"
+            "- If the user wants to MODIFY the visualization (change colors, add a "
+            "series, adjust layout, etc.), write the updated code and call `show` again."
+        )
         return json.dumps(payload)
 
     except SecurityError:
@@ -704,3 +760,112 @@ async def show(
         if ctx:
             await ctx.error(f"Failed to create visualization: {e}")
         raise ToolError(f"Failed to create visualization: {e!s}. Check that the Panel server is running and the code is valid Python.") from e
+
+
+@mcp.tool(name="screenshot")
+async def screenshot(
+    snippet_id: str,
+    width: int = 1200,
+    height: int = 800,
+    full_page: bool = False,
+    ctx: Context | None = None,
+) -> ToolResult:
+    """See an EXISTING visualization — returns a PNG image of it to you (the LLM).
+
+    Pass the `snippet_id` that `show` returned; this tool screenshots that
+    already-rendered `/view` page and hands you the picture so you can answer a
+    follow-up question about how it LOOKS. It does NOT create or modify anything
+    and is NOT a substitute for `show` — the user already has the interactive
+    visualization in their browser.
+
+    ════════════════════════════════════════════════════════════════════════
+    CRITICAL RULE — answering questions ABOUT a visualization's appearance:
+    ════════════════════════════════════════════════════════════════════════
+    When the user asks where something is, which element is biggest/smallest,
+    what color/position/shape something has, or anything about how the chart
+    LOOKS, you MUST call this tool and answer from the returned image.
+
+    You MUST NOT answer such questions by reading the code, recomputing from the
+    raw data, or re-running the snippet in a Python tool. THAT IS CHEATING AND IS
+    USUALLY WRONG, because the rendered plot is NOT the same as the raw data:
+      - heatmaps flip/reverse the row order (Row 0 often renders at the BOTTOM)
+      - axes get inverted, categories get sorted, histograms bin/group values
+      - color mapping, stacking, and layout change what is visually "highest"
+    The raw-data answer and the on-screen answer frequently DISAGREE. The image
+    is the only ground truth for a question about appearance — so look at it.
+
+    Do not add `np.random.seed(...)` or otherwise make data deterministic just so
+    you can recompute it; read the answer off the actual picture.
+
+    ════════════════════════════════════════════════════════════════════════
+    IMAGE QUALITY — when the picture is not enough:
+    ════════════════════════════════════════════════════════════════════════
+    After receiving the screenshot, check whether it is clear enough to answer:
+      - Is the chart blurry or pixelated?
+      - Is the relevant detail (a label, a tick value, a legend entry) too small
+        to read confidently?
+      - Is the area of interest clipped or off-screen?
+
+    If YES — the image is not reliable enough — do NOT guess from it.
+    Instead, answer the question directly from the code and data (compute
+    the value, read the label, inspect the structure). A code-derived answer
+    is better than a wrong guess from a bad image.
+
+    If the image is fine, always prefer it over recomputing (see CRITICAL RULE
+    above — rendered output and raw data frequently disagree).
+
+    WHEN TO USE — a follow-up question about an already-shown visualization that
+    can only be answered by seeing it (random/dynamic data, or visual position):
+        · wave/line chart  → "where does it peak?", "where is the lowest dip?"
+        · bar chart        → "which bar is the tallest?", "which category leads?"
+        · scatter plot     → "where are the outliers?", "how spread out are the points?"
+        · heatmap          → "which cell has the highest value?"
+        · pie/donut chart  → "which slice is the largest?"
+        · histogram        → "where is the distribution centered?"
+        · any chart        → "what color is X?", "what does the legend say?"
+
+    Typical loop: `validate` → `show` (returns id) → `screenshot(snippet_id=id)`
+    when the user asks something visual you can't read off the code.
+
+    Parameters
+    ----------
+    snippet_id : str
+        Id of the visualization to screenshot, as returned by `show`.
+    width : int, default 1200
+        Browser viewport width in pixels.
+    height : int, default 800
+        Browser viewport height in pixels.
+    full_page : bool, default False
+        If ``True``, capture the full scrollable page rather than just the
+        viewport. Useful for tall dashboards.
+
+    Returns
+    -------
+    Image
+        PNG screenshot of the rendered visualization.
+    """
+    if not snippet_id:
+        raise ToolError("Provide the snippet_id returned by show() to screenshot its rendered page.")
+
+    # Capture the existing snippet's rendered /view page as a PNG.
+    # The endpoint 404s if the id is unknown.
+    png, error = await asyncio.to_thread(_client.get_screenshot, snippet_id, width, height, full_page)
+    if error:
+        raise ToolError(f"Screenshot failed: {error}")
+    if not png:
+        raise ToolError("Screenshot capture returned no image data.")
+
+    reminder = (
+        "IMAGE QUALITY CHECK — before answering:\n"
+        "· Blurry, pixelated, or clipped? → answer from the code/data instead.\n"
+        "· Text/labels too small to read confidently? → answer from the code/data instead.\n"
+        "· Image is clear and complete? → answer from THIS image only. "
+        "Do NOT recompute from raw data — rendered output and raw data frequently disagree "
+        "(row order, axis inversion, sorting, binning)."
+    )
+    return ToolResult(
+        content=[
+            Image(data=png, format="png").to_image_content(),
+            TextContent(type="text", text=reminder),
+        ]
+    )
