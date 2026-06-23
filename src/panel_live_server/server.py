@@ -714,12 +714,14 @@ async def show(
             # clear text error instead of a blank App pane.
             raise ToolError(f"Visualization created but failed at runtime:\n{error_message}\nFix the code and try again.")
 
-        # Embed the rendered output as srcdoc so it displays inline without a
-        # live websocket back to the Panel server, which both Claude Desktop
-        # (frame-src CSP) and Cowork (sandboxed iframe that blocks the websocket)
-        # require. This runs for every client; the live URL stays in the payload
-        # as a fallback for clients that can reach the server directly.
-        if snippet_id := response.get("id", ""):
+        snippet_id = response.get("id", "")
+
+        # Embed the rendered output as srcdoc so it displays inline without a live
+        # websocket back to the Panel server — needed only by clients whose iframe
+        # can't reach the server: Claude Desktop (frame-src CSP) and Cowork
+        # (sandboxed iframe). Clients that can reach the server (VS Code, Cursor,
+        # Claude Code) skip the embed and use the live URL already in the payload.
+        if embed_only and snippet_id:
             embed_html = await asyncio.to_thread(_client.get_embed_html, snippet_id)
             cap = _COWORK_EMBED_SIZE_CAP if is_cowork else _EMBED_SIZE_CAP
             payload.update(_embed_fields(embed_html, embed_only, cap))
