@@ -1,7 +1,7 @@
 # Examples
 
 Copy-paste snippets for the most common visualization types. All examples use the default
-`inline` method — the last expression is displayed automatically, just like a notebook cell.
+`inline` method. The last expression is displayed automatically, just like a notebook cell.
 
 Use the `server` method (with `.servable()`) for multi-component dashboards; those examples
 are in the [Panel dashboard](#panel-dashboard) and [DataFrame table](#dataframe-table) sections below.
@@ -155,7 +155,7 @@ fig
 
 ## Panel widgets
 
-Interactive widgets with reactive bindings. Uses the `inline` method — Panel's
+Interactive widgets with reactive bindings. Uses the `inline` method: Panel's
 `pn.panel()` wraps the bound function output automatically.
 
 ### Slider with live output

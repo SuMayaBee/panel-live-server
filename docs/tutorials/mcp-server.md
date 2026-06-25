@@ -6,8 +6,8 @@ asked an AI to produce a chart and seen it rendered live in your IDE.
 
 ## What You'll Need
 
-- Panel Live Server installed — see [Installation](installation.md)
-- Familiarity with snippets and execution methods — see [Standalone Server](standalone-server.md)
+- Panel Live Server installed, see [Installation](installation.md)
+- Familiarity with snippets and execution methods, see [Standalone Server](standalone-server.md)
 - An MCP-compatible AI assistant: Claude Code, Claude Desktop, GitHub Copilot (VS Code), or similar
 
 ---
@@ -18,8 +18,8 @@ See [Installation → Connect to your MCP client](installation.md#connect-to-you
 the full setup instructions for VS Code, Cursor, Claude Desktop, Claude Code, and claude.ai.
 
 !!! note
-    When the MCP server starts, it automatically starts the Panel server in the background —
-    you do not need to run `pls serve` separately. If you have a standalone `pls serve` running,
+    When the MCP server starts, it automatically starts the Panel server in the background.
+    You do not need to run `pls serve` separately. If you have a standalone `pls serve` running,
     stop it first as both use port 5077 by default.
 
 ---
@@ -30,7 +30,13 @@ Ask your AI assistant:
 
 > List your available MCP tools.
 
-You should see `show` and `list_packages` in the response.
+You should see four tools in the response:
+
+- `list_packages`: lists what is installed in the server environment
+- `validate`: checks code before anything is rendered
+- `show`: renders the visualization and returns a live URL
+- `screenshot`: takes a picture of an already-rendered visualization so the AI can answer
+  questions about how it looks
 
 ---
 
@@ -41,7 +47,8 @@ and save it as `penguins.csv`. Then ask your AI:
 
 > My dataset is penguins.csv. Show the distribution of the 'species' column as an interactive bar chart. Use the show tool.
 
-Your AI will call the `show` tool. You'll see a response like:
+Your AI will typically call `validate` first to check the code, then `show` to render it.
+You'll see a response like:
 
 ```
 Visualization created successfully!
@@ -71,7 +78,24 @@ zoom, and pan.
 
 ---
 
-## Step 5: Build an interactive dashboard
+## Step 5: Ask a follow-up question about how it looks
+
+Now ask something that can only be answered by looking at the chart, not by reading the code:
+
+> Which species has the widest spread of body mass in that scatter plot?
+
+The AI cannot open a browser, so to answer correctly it calls `screenshot` on the snippet it
+just created, gets back a picture of the rendered chart, and reads the answer off the image.
+
+!!! note "Why this matters"
+    Plots are not the same as the raw data: heatmaps can flip row order, axes get inverted,
+    categories get sorted, and histograms bin values. Reasoning from the code alone often gives
+    a different answer than what the chart actually shows. `screenshot` lets the AI check the
+    real rendered output instead of guessing.
+
+---
+
+## Step 6: Build an interactive dashboard
 
 Ask the AI to create a full Panel application:
 
@@ -82,7 +106,7 @@ The dashboard updates in real time as you interact with it.
 
 ---
 
-## Step 6: Iterate
+## Step 7: Iterate
 
 If the result isn't what you expected, continue the conversation:
 
@@ -91,11 +115,11 @@ If the result isn't what you expected, continue the conversation:
 - "Show only penguins with body mass greater than 4000g"
 - "Display the scatter plot and a histogram side by side"
 
-Each message creates a new visualization — previous ones remain accessible at their URLs.
+Each message creates a new visualization. Previous ones remain accessible at their URLs.
 
 ---
 
-## Step 7: Check what packages are available
+## Step 8: Check what packages are available
 
 Ask your AI:
 
@@ -112,12 +136,15 @@ for how to add it with `--with`.
 
 ## How it works
 
-When your AI calls the `show` tool:
+A typical AI-assisted session looks like this:
 
-1. The MCP server validates the code (syntax, imports, test execution)
-2. The code is sent to the Panel server via the REST API
+1. The AI calls `validate` to check the code (syntax, security, package availability,
+   Panel extensions, and a runtime test run)
+2. The AI calls `show`, which sends the code to the Panel server via the REST API
 3. The Panel server stores and executes the snippet, returning a URL
-4. The URL is shown to you — click it to open the live visualization
+4. The URL is shown to you, click it to open the live visualization
+5. If you ask a question about how the result looks, the AI calls `screenshot` to see it
+   before answering
 
 See [Architecture](../explanation/architecture.md) for the full picture.
 
@@ -136,7 +163,7 @@ errors. If `pls` is not on PATH inside the MCP process, use the full path:
 
 ### Visualization shows an error
 
-The error message is returned to the AI. Ask it to fix the issue — it has the full error context.
+The error message is returned to the AI. Ask it to fix the issue, it has the full error context.
 Or start with a simpler snippet to confirm the server is working:
 
 > Show `1 + 1` using the show tool.
@@ -158,17 +185,26 @@ URL in your browser instead.
 The server runs in an isolated uv tool environment. Install missing packages as described in
 [Installation](installation.md#add-packages-to-the-server-environment).
 
+### `screenshot` fails with a Playwright error
+
+The `screenshot` tool needs the Chromium browser that Playwright manages. Install it once with:
+
+```bash
+playwright install chromium
+```
+
 ---
 
 ## What You've Learned
 
 - Configure the Panel Live Server MCP server for your AI assistant
 - Ask the AI to create visualizations using natural language
+- Ask a follow-up question about a visualization's appearance and have the AI check with `screenshot`
 - Iterate on visualizations through conversation
 - Check available packages with the `list_packages` tool
 
 ## Next Steps
 
-- **[Configure the server](../how-to/configure-server.md)** — custom port, transport, Jupyter proxy
-- **[Architecture](../explanation/architecture.md)** — understand the MCP + Panel server design
-- **[Examples](../examples.md)** — copy-paste snippets to try with your AI
+- **[Configure the server](../how-to/configure-server.md)**: custom port, transport, Jupyter proxy
+- **[Architecture](../explanation/architecture.md)**: understand the MCP + Panel server design
+- **[Examples](../examples.md)**: copy-paste snippets to try with your AI

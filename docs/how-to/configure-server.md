@@ -1,11 +1,11 @@
 # Configure Panel Live Server
 
-This guide shows you how to configure Panel Live Server — the Panel web server that executes
+This guide shows you how to configure Panel Live Server, the Panel web server that executes
 Python code snippets and renders interactive visualizations.
 
 ## Prerequisites
 
-- Panel Live Server installed — see [Getting Started](../tutorials/getting-started.md)
+- Panel Live Server installed, see [Installation](../tutorials/installation.md)
 
 ---
 
@@ -27,6 +27,8 @@ required for local use.
 
 All settings are controlled through environment variables:
 
+**macOS / Linux:**
+
 ```bash
 export PANEL_LIVE_SERVER_PORT=9999
 export PANEL_LIVE_SERVER_HOST=127.0.0.1
@@ -34,11 +36,33 @@ export PANEL_LIVE_SERVER_DB_PATH=/data/my-snippets.db
 export PANEL_LIVE_SERVER_MAX_RESTARTS=5
 ```
 
-Then start the server:
+**Windows (PowerShell):**
+
+```powershell
+$env:PANEL_LIVE_SERVER_PORT="9999"
+$env:PANEL_LIVE_SERVER_HOST="127.0.0.1"
+$env:PANEL_LIVE_SERVER_DB_PATH="C:\data\my-snippets.db"
+$env:PANEL_LIVE_SERVER_MAX_RESTARTS="5"
+```
+
+**Windows (Command Prompt):**
+
+```bat
+set PANEL_LIVE_SERVER_PORT=9999
+set PANEL_LIVE_SERVER_HOST=127.0.0.1
+set PANEL_LIVE_SERVER_DB_PATH=C:\data\my-snippets.db
+set PANEL_LIVE_SERVER_MAX_RESTARTS=5
+```
+
+Then start the server, in standalone mode:
 
 ```bash
 pls serve
-# or, for MCP mode:
+```
+
+Or in MCP mode:
+
+```bash
 pls mcp
 ```
 
@@ -63,7 +87,7 @@ Run `pls serve --help` for the full list of options.
 To use Panel Live Server with AI assistants, start it in MCP mode:
 
 ```bash
-# stdio transport (default — for Claude Desktop, Claude Code, etc.)
+# stdio transport (default, for Claude Desktop, Claude Code, etc.)
 pls mcp
 
 # HTTP transport
@@ -106,7 +130,7 @@ The following environment variables are detected automatically (in priority orde
 
 | Variable(s) | Environment |
 |---|---|
-| `PANEL_LIVE_SERVER_EXTERNAL_URL` | Any — explicit port-inclusive override |
+| `PANEL_LIVE_SERVER_EXTERNAL_URL` | Any, explicit port-inclusive override |
 | `JUPYTERHUB_HOST` + `JUPYTERHUB_SERVICE_PREFIX` | JupyterHub with [jupyter-server-proxy](https://jupyter-server-proxy.readthedocs.io/) |
 | `CODESPACE_NAME` + `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` | GitHub Codespaces |
 
@@ -116,8 +140,26 @@ claude.ai requires a public URL. Expose the Panel server via a tunnel (Cloudflar
 localhost.run, etc.) and set the URL before starting the MCP server:
 
 ```bash
-cloudflared tunnel --url http://localhost:5077   # copy the printed URL
+cloudflared tunnel --url http://localhost:5077
+```
+
+Copy the printed URL and set it.
+
+**macOS / Linux:**
+
+```bash
 export PANEL_LIVE_SERVER_EXTERNAL_URL=<url-from-above>
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:PANEL_LIVE_SERVER_EXTERNAL_URL="<url-from-above>"
+```
+
+Then start the MCP server:
+
+```bash
 pls mcp --transport http --port 8001
 ```
 
@@ -143,26 +185,48 @@ routing mode, set it manually in your MCP configuration:
 }
 ```
 
-Or set the full URL explicitly:
+Or set the full URL explicitly.
+
+**macOS / Linux:**
 
 ```bash
 export PANEL_LIVE_SERVER_EXTERNAL_URL="https://your-hub/user/you/proxy/5077"
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:PANEL_LIVE_SERVER_EXTERNAL_URL="https://your-hub/user/you/proxy/5077"
+```
+
+```bash
 pls mcp
 ```
 
 ### GitHub Codespaces
 
-URL detection is automatic — no configuration needed.
+URL detection is automatic, no configuration needed.
 
 ---
 
 ## Custom Database Location
 
 By default the SQLite database is stored at `~/.panel-live-server/snippets/snippets.db`.
-To use a different location:
+To use a different location.
+
+**macOS / Linux:**
 
 ```bash
 export PANEL_LIVE_SERVER_DB_PATH=/path/to/your/snippets.db
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:PANEL_LIVE_SERVER_DB_PATH="C:\path\to\your\snippets.db"
+```
+
+```bash
 pls serve
 ```
 
@@ -177,10 +241,21 @@ pls serve --db-path /path/to/your/snippets.db
 ## Configuring Auto-Restart Behaviour
 
 Panel Live Server automatically restarts the Panel subprocess if it becomes unhealthy, up to
-`max_restarts` times. Adjust this limit:
+`max_restarts` times. Adjust this limit.
+
+**macOS / Linux:**
 
 ```bash
 export PANEL_LIVE_SERVER_MAX_RESTARTS=5
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:PANEL_LIVE_SERVER_MAX_RESTARTS="5"
+```
+
+```bash
 pls mcp
 ```
 
@@ -198,14 +273,25 @@ Change the port:
 pls serve --port 5078
 ```
 
-Or find and stop the process using the port:
+Or find and stop the process using the port.
+
+**macOS / Linux:**
 
 ```bash
-# Linux / macOS
 lsof -ti:5077 | xargs kill -9
+```
 
-# Windows
+**Windows (PowerShell):**
+
+```powershell
+Get-Process -Id (Get-NetTCPConnection -LocalPort 5077).OwningProcess | Stop-Process -Force
+```
+
+**Windows (Command Prompt):**
+
+```bat
 netstat -ano | findstr :5077
+taskkill /PID <pid-from-above> /F
 ```
 
 ### Server Not Responding
@@ -222,6 +308,13 @@ Or query the health endpoint directly:
 curl http://localhost:5077/api/health
 ```
 
+On Windows (PowerShell), `curl` is aliased to `Invoke-WebRequest`, which needs `-UseBasicParsing`
+on older versions:
+
+```powershell
+Invoke-WebRequest http://localhost:5077/api/health -UseBasicParsing
+```
+
 A healthy server returns `{"status": "ok", ...}`.
 
 ### Visualizations Not Displaying
@@ -234,6 +327,6 @@ A healthy server returns `{"status": "ok", ...}`.
 
 ## Next Steps
 
-- [Architecture](../explanation/architecture.md) — understand how the components fit together
-- [Getting Started Tutorial](../tutorials/getting-started.md) — create your first visualization
-- [API Reference](../reference/panel_live_server.md) — full reference documentation
+- [Architecture](../explanation/architecture.md): understand how the components fit together
+- [Installation Tutorial](../tutorials/installation.md): create your first visualization
+- [API Reference](../reference/panel_live_server.md): full reference documentation

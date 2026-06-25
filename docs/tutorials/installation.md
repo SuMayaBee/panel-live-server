@@ -6,49 +6,112 @@ terminal. By the end, `pls --version` will print the installed version.
 ## What You'll Need
 
 - Python 3.12 or later
-- A package manager: [`uv`](https://docs.astral.sh/uv/), `pip` (built into Python), or [`pixi`](https://pixi.sh)
+- A package manager: [`pixi`](https://pixi.sh), [`uv`](https://docs.astral.sh/uv/), or `pip` (built into Python)
 
 ---
 
 ## Install Panel Live Server
 
-=== "uv"
+=== "pixi"
+
+    Initialize a project:
 
     ```bash
-    # Install
-    uv tool install "panel-live-server[pydata]"
+    pixi init
+    pixi add python
+    ```
 
-    # Find the pls path
+    Install:
+
+    ```bash
+    pixi add --pypi "panel-live-server[pydata]"
+    ```
+
+    Find the `pls` path:
+
+    **macOS / Linux:**
+
+    ```bash
+    pixi run which pls
+    # typically: /path/to/project/.pixi/envs/default/bin/pls
+    ```
+
+    **Windows:**
+
+    ```powershell
+    pixi run where.exe pls
+    # typically: .pixi\envs\default\Library\bin\pls.exe
+    ```
+
+=== "uv"
+
+    Install:
+
+    ```bash
+    uv tool install "panel-live-server[pydata]"
+    ```
+
+    Find the `pls` path:
+
+    **macOS / Linux:**
+
+    ```bash
     which pls
     # typically: /home/<user>/.local/bin/pls
     ```
 
+    **Windows:**
+
+    ```powershell
+    where.exe pls
+    # typically: %USERPROFILE%\.local\bin\pls.exe
+    ```
+
 === "pip"
 
+    Create and activate a virtual environment.
+
+    **macOS / Linux:**
+
     ```bash
-    # Create and activate a virtual environment
     python -m venv venv
-    source venv/bin/activate  # on Linux/macOS
+    source venv/bin/activate
+    ```
 
-    # Install
+    **Windows (PowerShell):**
+
+    ```powershell
+    python -m venv venv
+    venv\Scripts\Activate.ps1
+    ```
+
+    **Windows (Command Prompt):**
+
+    ```bat
+    python -m venv venv
+    venv\Scripts\activate.bat
+    ```
+
+    Install:
+
+    ```bash
     pip install "panel-live-server[pydata]"
+    ```
 
-    # Find the pls path
+    Find the `pls` path:
+
+    **macOS / Linux:**
+
+    ```bash
     which pls
     # typically: /path/to/venv/bin/pls
     ```
 
-=== "pixi"
+    **Windows:**
 
-    ```bash
-    # Initialize and install
-    pixi init
-    pixi add python
-    pixi add --pypi "panel-live-server[pydata]"
-
-    # Find the pls path
-    pixi run which pls
-    # typically: /path/to/project/.pixi/envs/default/bin/pls
+    ```powershell
+    where.exe pls
+    # typically: .\venv\Scripts\pls.exe
     ```
 
 The `[pydata]` extra includes the full visualization stack used in these tutorials:
@@ -58,9 +121,9 @@ The `[pydata]` extra includes the full visualization stack used in these tutoria
 !!! tip "Only need the core server?"
     Install without extras if you only want to serve your own code and manage packages yourself:
     ```bash
+    pixi add --pypi panel-live-server
     uv tool install panel-live-server
     pip install panel-live-server
-    pixi add --pypi panel-live-server
     ```
 
 ---
@@ -72,7 +135,7 @@ pls --version
 ```
 
 You should see the installed version printed. If the command is not found, ensure your uv tools
-directory is on your PATH — run `uv tool update-shell` and restart your terminal.
+directory is on your PATH, run `uv tool update-shell` and restart your terminal.
 
 ---
 
@@ -95,7 +158,7 @@ directory is on your PATH — run `uv tool update-shell` and restart your termin
     ```
 
     !!! warning "Use your absolute path"
-        Replace `"command": "/path/to/pls"` with the path printed by `which pls` above —
+        Replace `"command": "/path/to/pls"` with the path printed by `which pls` above,
         e.g. `"command": "/home/user/.local/bin/pls"`
 
 === "Cursor"
@@ -114,7 +177,7 @@ directory is on your PATH — run `uv tool update-shell` and restart your termin
     ```
 
     !!! warning "Use your absolute path"
-        Replace `"command": "/path/to/pls"` with the path printed by `which pls` above —
+        Replace `"command": "/path/to/pls"` with the path printed by `which pls` above,
         e.g. `"command": "/home/user/.local/bin/pls"`
 
     Open Cursor Settings → MCP and verify the green dot. Use Agent mode in chat.
@@ -139,7 +202,7 @@ directory is on your PATH — run `uv tool update-shell` and restart your termin
     ```
 
     !!! warning "Use your absolute path"
-        Replace `"command": "/path/to/pls"` with the path printed by `which pls` above —
+        Replace `"command": "/path/to/pls"` with the path printed by `which pls` above,
         e.g. `"command": "/home/user/.local/bin/pls"`
 
     Restart Claude Desktop.
@@ -157,40 +220,53 @@ directory is on your PATH — run `uv tool update-shell` and restart your termin
     ```
 
     !!! warning "Use your absolute path"
-        Replace `/path/to/pls` with the path printed by `which pls` above —
+        Replace `/path/to/pls` with the path printed by `which pls` above,
         e.g. `claude mcp add panel-live-server -- /home/user/.local/bin/pls mcp`
 
 === "claude.ai"
 
     claude.ai requires HTTP transport and a public URL. You can use any tunneling service
-    (ngrok, Cloudflare, localhost.run, etc.) — this example uses Cloudflare.
+    (ngrok, Cloudflare, localhost.run, etc.); this example uses Cloudflare.
 
-    **Terminal 1** — start the MCP server:
+    **Terminal 1**: start the MCP server:
 
     ```bash
     /path/to/pls mcp --transport http --port 8001
     ```
 
     !!! warning "Use your absolute path"
-        Replace `/path/to/pls` with the path printed by `which pls` above —
+        Replace `/path/to/pls` with the path printed by `which pls` above,
         e.g. `/home/user/.local/bin/pls mcp --transport http --port 8001`
 
-    **Terminal 2** — tunnel for the MCP server:
+    **Terminal 2**: tunnel for the MCP server:
 
     ```bash
     cloudflared tunnel --url http://localhost:8001
     ```
 
-    **Terminal 3** — tunnel for the Panel server:
+    **Terminal 3**: tunnel for the Panel server:
 
     ```bash
     cloudflared tunnel --url http://localhost:5077
     ```
 
-    Stop Terminal 1, set the Panel tunnel URL, and restart:
+    Stop Terminal 1, then set the Panel tunnel URL.
+
+    **macOS / Linux:**
 
     ```bash
     export PANEL_LIVE_SERVER_EXTERNAL_URL=<url-from-terminal-3>
+    ```
+
+    **Windows (PowerShell):**
+
+    ```powershell
+    $env:PANEL_LIVE_SERVER_EXTERNAL_URL="<url-from-terminal-3>"
+    ```
+
+    And restart:
+
+    ```bash
     /path/to/pls mcp --transport http --port 8001
     ```
 
@@ -201,7 +277,7 @@ Once connected, ask your AI: *"Show me a scatter plot of this data using the sho
 
 ---
 
-**Without an AI assistant** — use the REST API or the browser UI directly.
+**Without an AI assistant**: use the REST API or the browser UI directly.
 
 === "REST API"
 
@@ -233,24 +309,6 @@ Once connected, ask your AI: *"Show me a scatter plot of this data using the sho
 Because Panel Live Server runs in an isolated tool environment, it executes your Python snippets
 using the packages installed *in that environment*. To add a package:
 
-=== "uv"
-
-    ```bash
-    uv tool install --with my-package "panel-live-server[pydata]"
-    ```
-
-    You can chain multiple `--with` flags:
-
-    ```bash
-    uv tool install --with prophet --with xgboost "panel-live-server[pydata]"
-    ```
-
-    !!! note "Upgrading"
-        To upgrade to the latest version:
-        ```bash
-        uv tool upgrade panel-live-server
-        ```
-
 === "pixi"
 
     ```bash
@@ -269,7 +327,25 @@ using the packages installed *in that environment*. To add a package:
         pixi upgrade panel-live-server
         ```
 
-No server restart is needed — the package is available immediately the next time the server starts.
+=== "uv"
+
+    ```bash
+    uv tool install --with my-package "panel-live-server[pydata]"
+    ```
+
+    You can chain multiple `--with` flags:
+
+    ```bash
+    uv tool install --with prophet --with xgboost "panel-live-server[pydata]"
+    ```
+
+    !!! note "Upgrading"
+        To upgrade to the latest version:
+        ```bash
+        uv tool upgrade panel-live-server
+        ```
+
+No server restart is needed, the package is available immediately the next time the server starts.
 
 ---
 
@@ -281,5 +357,5 @@ No server restart is needed — the package is available immediately the next ti
 
 ## Next Steps
 
-- **[Use the standalone server](standalone-server.md)** — create, view, and manage visualizations
-- **[Use the MCP server](mcp-server.md)** — enable AI assistants to render visualizations in your IDE
+- **[Use the standalone server](standalone-server.md)**: create, view, and manage visualizations
+- **[Use the MCP server](mcp-server.md)**: enable AI assistants to render visualizations in your IDE

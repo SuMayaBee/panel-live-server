@@ -25,47 +25,101 @@ git checkout -b feature/YourFeature
 
 ## Step 2: Install
 
-=== "uv"
-
-    ```bash
-    uv venv && source .venv/bin/activate
-    uv pip install -e ".[dev]"
-    playwright install chromium
-
-    # Find the pls path
-    which pls
-    # typically: /path/to/panel-live-server/.venv/bin/pls
-    ```
-
-    !!! note
-        Run `source .venv/bin/activate` in every new terminal to re-activate the venv.
-        `playwright install chromium` is a one-time step that downloads the browser binary
-        (~150 MB) required by the `screenshot` MCP tool.
-
 === "pixi"
+
+    Install the environment:
 
     ```bash
     pixi install
-    pixi run postinstall
+    ```
 
-    # Find the pls path
+    Run the post-install step (editable install plus Chromium setup):
+
+    ```bash
+    pixi run postinstall
+    ```
+
+    Find the `pls` path:
+
+    **macOS / Linux:**
+
+    ```bash
     pixi run which pls
     # typically: /path/to/panel-live-server/.pixi/envs/default/bin/pls
+    ```
+
+    **Windows:**
+
+    ```powershell
+    pixi run where.exe pls
+    # typically: .pixi\envs\default\Library\bin\pls.exe
     ```
 
     !!! note
         Prefix commands with `pixi run` (e.g. `pixi run pytest`) to use the pixi env without
         activating it. `pixi run postinstall` already installs Chromium automatically.
 
+=== "uv"
+
+    Create and activate a virtual environment.
+
+    **macOS / Linux:**
+
+    ```bash
+    uv venv
+    source .venv/bin/activate
+    ```
+
+    **Windows (PowerShell):**
+
+    ```powershell
+    uv venv
+    .venv\Scripts\Activate.ps1
+    ```
+
+    **Windows (Command Prompt):**
+
+    ```bat
+    uv venv
+    .venv\Scripts\activate.bat
+    ```
+
+    Install the package in editable mode:
+
+    ```bash
+    uv pip install -e ".[dev]"
+    ```
+
+    Install the browser binary needed by the `screenshot` MCP tool:
+
+    ```bash
+    playwright install chromium
+    ```
+
+    Find the `pls` path:
+
+    **macOS / Linux:**
+
+    ```bash
+    which pls
+    # typically: /path/to/panel-live-server/.venv/bin/pls
+    ```
+
+    **Windows:**
+
+    ```powershell
+    where.exe pls
+    # typically: .venv\Scripts\pls.exe
+    ```
+
+    !!! note
+        Re-activate the venv in every new terminal (see above).
+        `playwright install chromium` is a one-time step that downloads the browser binary
+        (~150 MB) required by the `screenshot` MCP tool.
+
 ---
 
 ## Step 3: Install pre-commit hooks
-
-=== "uv"
-
-    ```bash
-    pre-commit install
-    ```
 
 === "pixi"
 
@@ -73,11 +127,18 @@ git checkout -b feature/YourFeature
     pixi run lint-install
     ```
 
+=== "uv"
+
+    ```bash
+    pre-commit install
+    ```
+
 ---
 
 ## Step 4: Connect to your MCP client
 
-Use the absolute path from `which pls` (uv) or `pixi run which pls` (pixi) above.
+Use the absolute path from `pixi run which pls` (pixi) or `which pls` (uv) above, or
+`where.exe pls` on Windows.
 
 === "VS Code"
 
@@ -96,7 +157,7 @@ Use the absolute path from `which pls` (uv) or `pixi run which pls` (pixi) above
     ```
 
     !!! warning "Use your absolute path"
-        Replace `"command": "/path/to/pls"` with the path printed above —
+        Replace `"command": "/path/to/pls"` with the path printed above,
         e.g. `"command": "/path/to/panel-live-server/.venv/bin/pls"`
 
 === "Cursor"
@@ -115,7 +176,7 @@ Use the absolute path from `which pls` (uv) or `pixi run which pls` (pixi) above
     ```
 
     !!! warning "Use your absolute path"
-        Replace `"command": "/path/to/pls"` with the path printed above —
+        Replace `"command": "/path/to/pls"` with the path printed above,
         e.g. `"command": "/path/to/panel-live-server/.venv/bin/pls"`
 
     Open Cursor Settings → MCP and verify the green dot. Use Agent mode in chat.
@@ -140,7 +201,7 @@ Use the absolute path from `which pls` (uv) or `pixi run which pls` (pixi) above
     ```
 
     !!! warning "Use your absolute path"
-        Replace `"command": "/path/to/pls"` with the path printed above —
+        Replace `"command": "/path/to/pls"` with the path printed above,
         e.g. `"command": "/path/to/panel-live-server/.venv/bin/pls"`
 
     Restart Claude Desktop.
@@ -152,40 +213,53 @@ Use the absolute path from `which pls` (uv) or `pixi run which pls` (pixi) above
     ```
 
     !!! warning "Use your absolute path"
-        Replace `/path/to/pls` with the path printed above —
+        Replace `/path/to/pls` with the path printed above,
         e.g. `claude mcp add panel-live-server -- /path/to/panel-live-server/.venv/bin/pls mcp`
 
 === "claude.ai"
 
     claude.ai requires HTTP transport and a public URL. You can use any tunneling service
-    (ngrok, Cloudflare, localhost.run, etc.) — this example uses Cloudflare.
+    (ngrok, Cloudflare, localhost.run, etc.); this example uses Cloudflare.
 
-    **Terminal 1** — start the MCP server:
+    **Terminal 1**: start the MCP server:
 
     ```bash
     /path/to/pls mcp --transport http --port 8001
     ```
 
     !!! warning "Use your absolute path"
-        Replace `/path/to/pls` with the path printed above —
+        Replace `/path/to/pls` with the path printed above,
         e.g. `/path/to/panel-live-server/.venv/bin/pls mcp --transport http --port 8001`
 
-    **Terminal 2** — tunnel for the MCP server:
+    **Terminal 2**: tunnel for the MCP server:
 
     ```bash
     cloudflared tunnel --url http://localhost:8001
     ```
 
-    **Terminal 3** — tunnel for the Panel server:
+    **Terminal 3**: tunnel for the Panel server:
 
     ```bash
     cloudflared tunnel --url http://localhost:5077
     ```
 
-    Stop Terminal 1, set the Panel tunnel URL, and restart:
+    Stop Terminal 1, then set the Panel tunnel URL.
+
+    **macOS / Linux:**
 
     ```bash
     export PANEL_LIVE_SERVER_EXTERNAL_URL=<url-from-terminal-3>
+    ```
+
+    **Windows (PowerShell):**
+
+    ```powershell
+    $env:PANEL_LIVE_SERVER_EXTERNAL_URL="<url-from-terminal-3>"
+    ```
+
+    And restart:
+
+    ```bash
     /path/to/pls mcp --transport http --port 8001
     ```
 
@@ -196,20 +270,20 @@ Use the absolute path from `which pls` (uv) or `pixi run which pls` (pixi) above
 
 ## Step 5: Make changes and run tests
 
-=== "uv"
-
-    ```bash
-    pytest tests/                        # run all tests
-    pytest tests/test_validation.py      # run a single file
-    pre-commit run --all-files           # lint
-    ```
-
 === "pixi"
 
     ```bash
     pixi run test                        # run all tests
     pixi run test-coverage               # tests + coverage report
     pixi run lint                        # lint (pre-commit on all files)
+    ```
+
+=== "uv"
+
+    ```bash
+    pytest tests/                        # run all tests
+    pytest tests/test_validation.py      # run a single file
+    pre-commit run --all-files           # lint
     ```
 
 ---
