@@ -12,18 +12,18 @@ Panel Live Server uses a two-process architecture:
 MCP Client (Claude, Copilot, etc.)
   │  MCP protocol (stdio / HTTP / SSE)
   ▼
-pls mcp  — MCP Server (FastMCP)
+pls mcp, MCP Server (FastMCP)
   │  HTTP  POST /api/snippet
   │  HTTP  GET  /api/health
   ▼
-pls serve — Panel Server (subprocess, port 5077)
+pls serve, Panel Server (subprocess, port 5077)
   │  SQLite  ~/.panel-live-server/snippets/snippets.db
   ▼
-Browser — /view  /feed  /add  /admin
+Browser, /view  /feed  /add  /admin
 ```
 
-**MCP Server** (`pls mcp`): Hosts the `show` and `list_packages` MCP tools. Starts the Panel
-server as a subprocess and manages its lifecycle.
+**MCP Server** (`pls mcp`): Hosts the `list_packages`, `validate`, `show`, and `screenshot`
+MCP tools. Starts the Panel server as a subprocess and manages its lifecycle.
 
 **Panel Server** (`pls serve`): Executes Python code and serves visualizations as web pages.
 Exposes a REST API and four browser-accessible pages.
@@ -32,19 +32,58 @@ Exposes a REST API and four browser-accessible pages.
 
 ---
 
-## The `show` Tool
+## MCP Tools
 
-The `show` MCP tool is the primary interface for AI assistants. When called:
+The MCP server exposes four tools to the AI assistant, meant to be used together in a
+typical session.
+
+### `list_packages`: see what's available
+
+Lists the Python packages installed in the server environment. The environment is fixed,
+packages cannot be installed on the fly, so an AI assistant is expected to call this once at
+the start of a session to know what it can use before writing any code.
+
+```python
+list_packages()                                    # core packages (~30), name only
+list_packages(category="visualization")            # filter by category
+list_packages(query="panel", include_versions=True)  # filter by name, with versions
+```
+
+### `validate`: catch problems before rendering
+
+Runs a chain of checks against a snippet and returns a structured result, without creating
+any database entry or rendering anything:
+
+1. **Syntax**: `ast.parse()` catches syntax errors early
+2. **Security**: ruff security rules plus a blocked-import list
+3. **Package availability**: every import must already be installed in the server environment
+4. **Panel extensions**: required extensions declared via `pn.extension()` (`server` method
+   only, the `inline` method injects them automatically)
+5. **Runtime execution**: the code actually runs in an isolated namespace to catch
+   `ValueError`, `TypeError`, `AttributeError`, and similar errors
+
+```python
+validate(code="df.hvplot.bar(x='Product', y='Sales')", method="inline")
+# -> {"valid": True}
+# or -> {"valid": False, "layer": "packages", "message": "..."}
+```
+
+`show` reuses this cached result, so calling `validate` first avoids paying for the same
+checks twice.
+
+### `show`: render the visualization
+
+The primary tool for turning code into a live visualization. When called:
 
 1. The AI sends Python code via the `show` tool
-2. The MCP server validates the code (syntax, imports, test execution)
+2. The code has already been checked by `validate` (or `show` runs the checks itself when
+   called with `quick=True`)
 3. The MCP server POSTs the snippet to the Panel server's `/api/snippet` endpoint
 4. The Panel server stores the snippet in SQLite and returns a URL
 5. The MCP server returns the URL to the AI assistant
 6. The user accesses the visualization via URL in their browser (or inline in the MCP App UI)
 
 ```python
-# Example: what the AI calls
 show(
     code="df.hvplot.bar(x='Product', y='Sales')",
     name="Sales Chart",
@@ -59,8 +98,29 @@ The tool accepts:
 - **code** (required): Python code to execute
 - **name**: Human-readable title
 - **description**: One-sentence explanation
-- **method**: Execution method — `"inline"` (default) or `"server"`
-- **zoom**: Initial zoom level — `25`, `50`, `75`, or `100`
+- **method**: Execution method, `"inline"` (default) or `"server"`
+- **zoom**: Initial zoom level, `25`, `50`, `75`, or `100`
+- **quick**: If `True`, runs full validation inline instead of requiring a prior `validate` call
+
+### `screenshot`: see the result, don't guess
+
+`show` returns a live URL, but an AI assistant cannot open a browser to look at it. The
+`screenshot` tool closes that gap: it loads the rendered `/view` page for a given snippet in a
+headless browser and returns a PNG of it directly to the AI.
+
+This matters for follow-up questions about appearance: "where does it peak?", "which bar is
+tallest?", "what color is that slice?". Answering those from the raw data is often wrong,
+because the rendered plot is not the same as the data: heatmaps can flip row order, axes get
+inverted, categories get sorted, and histograms bin values. The screenshot is the only ground
+truth for what the chart actually looks like.
+
+```python
+screenshot(snippet_id="abc123", width=1200, height=800, full_page=False)
+```
+
+If the returned image is too blurry, too small, or clipped to answer confidently, the AI is
+instructed to fall back to reasoning from the code and data rather than guessing from a bad
+picture.
 
 ---
 
@@ -78,7 +138,7 @@ auto-restart it).
 **State Management**: The Panel server maintains its own SQLite database. Visualizations persist
 across MCP sessions and are accessible even if the MCP server is stopped.
 
-**Web Interface**: Running a dedicated Panel server allows full use of Panel's web framework —
+**Web Interface**: Running a dedicated Panel server allows full use of Panel's web framework:
 reactive widgets, real-time updates, and multi-page navigation.
 
 **Resource Control**: Long-running visualizations or large datasets run in a separate process
@@ -88,7 +148,7 @@ with their own memory space.
 
 ## Eager Startup and Auto-Restart
 
-The Panel server starts **immediately** when `pls mcp` is called — not on the first `show`
+The Panel server starts **immediately** when `pls mcp` is called, not on the first `show`
 invocation. This eliminates the 5–30 second startup penalty that would otherwise appear on
 every first visualization request.
 
@@ -146,19 +206,6 @@ application files.
 
 ---
 
-## Code Validation
-
-Before submitting code to the Panel server, the MCP server runs a validation chain:
-
-1. **Syntax check** — `ast.parse()` to catch syntax errors early
-2. **Extension check** — verifies required Panel extensions are available (plotly, vega, deckgl, etc.)
-3. **Execution test** — actually runs the code in a module namespace to catch runtime errors
-
-If validation fails, a structured error message is returned with recovery suggestions, without
-creating a database entry.
-
----
-
 ## Database and URL Management
 
 Snippets are stored in a SQLite database (default: `~/.panel-live-server/snippets/snippets.db`).
@@ -182,7 +229,7 @@ proxy configuration and externalizes URLs so they are accessible from the user's
 | `/view?id=...` | Executes and renders a single snippet |
 | `/feed` | Live-updating list of recent visualizations with inline previews |
 | `/add` | Web form to create snippets manually |
-| `/admin` | Management table — search, inspect, delete |
+| `/admin` | Management table: search, inspect, delete |
 
 ---
 
@@ -192,12 +239,12 @@ proxy configuration and externalizes URLs so they are accessible from the user's
 2. **Transparency**: Source code and metadata always visible in the UI
 3. **Flexibility**: Works with any Python visualization library
 4. **Persistence**: Snippets are saved and accessible across sessions
-5. **Safety**: Isolated execution — visualization crashes cannot affect the AI session
+5. **Safety**: Isolated execution, visualization crashes cannot affect the AI session
 
 ---
 
 ## Related
 
-- [Getting Started Tutorial](../tutorials/getting-started.md) — create your first visualization
-- [Configure the Server](../how-to/configure-server.md) — ports, database, restart settings
-- [API Reference](../reference/panel_live_server.md) — full reference documentation
+- [Installation Tutorial](../tutorials/installation.md): create your first visualization
+- [Configure the Server](../how-to/configure-server.md): ports, database, restart settings
+- [API Reference](../reference/panel_live_server.md): full reference documentation

@@ -6,7 +6,7 @@ and know how to browse and manage them.
 
 ## What You'll Need
 
-- Panel Live Server installed — see [Installation](installation.md)
+- Panel Live Server installed, see [Installation](installation.md)
 - A web browser
 
 ---
@@ -72,7 +72,7 @@ Click **Submit**. You'll see a success message with a link to your new visualiza
 ## Step 3: View your visualization
 
 Click the link in the success message. You'll be taken to a URL like
-`http://localhost:5077/view?id=abc123`. Your interactive bar chart is running live —
+`http://localhost:5077/view?id=abc123`. Your interactive bar chart is running live,
 hover over the bars to see the tooltips.
 
 ---
@@ -99,7 +99,7 @@ pn.Column(
 - **Description**: "A slider that computes its square"
 - **Execution Method**: `panel`
 
-Click **Submit** and open the link. Drag the slider — the result updates in real time.
+Click **Submit** and open the link. Drag the slider, the result updates in real time.
 
 ---
 
@@ -152,7 +152,7 @@ Open the printed URL to see your visualization.
 
 ### Jupyter (default)
 
-The last expression in the code is automatically captured and displayed — just like a notebook cell:
+The last expression in the code is automatically captured and displayed, just like a notebook cell:
 
 ```python
 import pandas as pd
@@ -202,6 +202,6 @@ This queries the health endpoint and reports whether the server is running.
 
 ## Next Steps
 
-- **[Use the MCP server](mcp-server.md)** — enable AI assistants to create visualizations for you
-- **[Configure the server](../how-to/configure-server.md)** — custom ports, database path, and more
-- **[Architecture](../explanation/architecture.md)** — understand how it all fits together
+- **[Use the MCP server](mcp-server.md)**: enable AI assistants to create visualizations for you
+- **[Configure the server](../how-to/configure-server.md)**: custom ports, database path, and more
+- **[Architecture](../explanation/architecture.md)**: understand how it all fits together
